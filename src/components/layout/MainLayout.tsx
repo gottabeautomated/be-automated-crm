@@ -1,4 +1,4 @@
-import React, { useState, ReactNode } from 'react';
+import React, { useState, ReactNode, useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   LogOut,
@@ -14,8 +14,13 @@ import {
   Target,
   Activity as ActivityIcon, // Renamed to avoid conflict with Activity interface
   Zap,
+  LayoutDashboard,
+  Briefcase,
+  CheckSquare,
+  Building,
+  BarChart2,
 } from 'lucide-react';
-import { logoutUser } from '@/services/firebase/authService';
+import { logoutUser, updateUserProfile } from '@/services/firebase/authService';
 import { useAuth } from '@/services/firebase/AuthProvider';
 
 interface NavItem {
@@ -155,35 +160,152 @@ const Header: React.FC<{ pageTitle: string }> = ({ pageTitle }) => {
   );
 }
 
-const MainLayout: React.FC = () => {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const location = useLocation();
-  
-  // Determine activeTab based on current route
-  const currentNavItem = navItems.find(item => location.pathname.startsWith(item.path));
-  const [activeTab, setActiveTab] = useState(currentNavItem ? currentNavItem.id : 'dashboard');
+// NavItem Props Typdefinition
+interface NavItemProps {
+  to: string;
+  icon: React.ElementType;
+  label: string;
+  currentPath: string;
+  isSidebarExpanded: boolean;
+}
 
-  // Update activeTab when location changes
-  React.useEffect(() => {
-    const newCurrentNavItem = navItems.find(item => location.pathname.startsWith(item.path));
-    if (newCurrentNavItem) {
-      setActiveTab(newCurrentNavItem.id);
-    }
-  }, [location.pathname]);
-
-  const pageTitle = currentNavItem?.label || 'Dashboard';
+// NavItem Komponente
+const NavItem: React.FC<NavItemProps> = ({ to, icon: Icon, label, currentPath, isSidebarExpanded }) => {
+  const isActive = currentPath.startsWith(to) && (to !== "/" || currentPath === "/"); // Genauere Prüfung für Root-Pfad
+  // Für den Root-Pfad (Dashboard) wollen wir nur aktiv sein, wenn es genau /dashboard (oder /) ist, nicht /dashboardabc
+  const isStrictActive = to === "/dashboard" ? currentPath === "/dashboard" || currentPath === "/" : isActive;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      <Sidebar 
-        sidebarOpen={sidebarOpen} 
-        setSidebarOpen={setSidebarOpen} 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
-      />
+    <Link 
+      to={to}
+      title={label} 
+      className={`flex items-center p-3 my-1 rounded-lg transition-colors duration-200 ease-in-out \
+        ${isStrictActive ? 'bg-sky-600 text-white shadow-md' : 'text-slate-300 hover:bg-sky-800 hover:text-white'}
+        ${!isSidebarExpanded ? 'justify-center' : ''}
+      `}
+    >
+      <Icon size={isSidebarExpanded ? 20 : 24} className={`${isSidebarExpanded ? 'mr-3' : ''} flex-shrink-0`} />
+      {isSidebarExpanded && <span className="truncate">{label}</span>}
+    </Link>
+  );
+};
+
+const MainLayout: React.FC = () => {
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { user, loading } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+      navigate('/login');
+    } catch (error) {
+      console.error("Logout Error: ", error);
+    }
+  };
+
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate('/login');
+    }
+  }, [user, loading, navigate]);
+  
+  const displayName = user?.displayName || user?.email?.split('@')[0] || 'Nutzer';
+  const userEmail = user?.email || 'Keine E-Mail hinterlegt';
+  const companyName = "BE_AUTOMATED";
+
+  const getPageTitle = () => {
+    const pathParts = location.pathname.split('/').filter(Boolean);
+    let title = pathParts.pop() || 'Dashboard'; // Fallback auf Dashboard
+    // Spezifische Titelanpassungen, falls nötig
+    if (title.toLowerCase() === 'be_automated') title = 'Dashboard';
+    return title.charAt(0).toUpperCase() + title.slice(1);
+  };
+
+  // commonNavItems ist jetzt JSX, das direkt gerendert wird
+  const CommonNavItemsComponent: React.FC<{currentPath: string, isSidebarExpanded: boolean}> = ({currentPath, isSidebarExpanded}) => (
+    <>
+      <NavItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" currentPath={currentPath} isSidebarExpanded={isSidebarExpanded} />
+      <NavItem to="/contacts" icon={Users} label="Kontakte" currentPath={currentPath} isSidebarExpanded={isSidebarExpanded} />
+      <NavItem to="/deals" icon={BarChart2} label="Deals / Pipeline" currentPath={currentPath} isSidebarExpanded={isSidebarExpanded} />
+      <NavItem to="/activities" icon={ActivityIcon} label="Aktivitäten" currentPath={currentPath} isSidebarExpanded={isSidebarExpanded} />
+      <NavItem to="/calendar" icon={Calendar} label="Kalender" currentPath={currentPath} isSidebarExpanded={isSidebarExpanded} />
+      {/* <NavItem to="/assessments" icon={CheckSquare} label="Assessments" currentPath={currentPath} isSidebarExpanded={isSidebarExpanded} /> */}
+      {/* Die obige "Assessments"-Route wird ggf. durch die neuen ersetzt oder umfunktioniert */}
+      <NavItem to="/assessment-hub" icon={Briefcase} label="Assessment Hub" currentPath={currentPath} isSidebarExpanded={isSidebarExpanded} />
+      <NavItem to="/assessment-results" icon={FileText} label="Assessment Ergebnisse" currentPath={currentPath} isSidebarExpanded={isSidebarExpanded} /> {/* Neuer Navigationspunkt */}
+      {/* Zukünftige Navigationspunkte hier einfügen */}
+    </>
+  );
+
+  if (loading) {
+    return <div className="flex justify-center items-center h-screen"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-sky-600"></div></div>; 
+  }
+
+  return (
+    <div className="flex h-screen bg-slate-100">
+      {/* Desktop Sidebar */}
+      <aside className={`bg-sky-900 text-white ${isSidebarExpanded ? 'w-64' : 'w-20'} p-4 space-y-2 transition-all duration-300 ease-in-out hidden md:flex flex-col`}>
+        <div className={`flex items-center ${isSidebarExpanded ? 'justify-between' : 'justify-center'} mb-6`}>
+          {isSidebarExpanded && <span className="text-2xl font-semibold text-white"><Link to="/dashboard">{companyName}</Link></span>}
+          <button onClick={() => setIsSidebarExpanded(!isSidebarExpanded)} className="p-2 rounded-md hover:bg-sky-800 focus:outline-none focus:ring-2 focus:ring-sky-500">
+            {isSidebarExpanded ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        </div>
+        <nav className="flex-grow">
+          <CommonNavItemsComponent currentPath={location.pathname} isSidebarExpanded={isSidebarExpanded} />
+        </nav>
+        <div>
+          <NavItem to="/settings" icon={Settings} label="Einstellungen" currentPath={location.pathname} isSidebarExpanded={isSidebarExpanded} />
+        </div>
+      </aside>
+
+      {/* Mobile Menu Button */}
+      <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="md:hidden fixed top-4 left-4 z-30 p-2 bg-sky-600 text-white rounded-md">
+        {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+      </button>
+
+      {/* Mobile Sidebar (Overlay) */}
+      <aside className={`bg-sky-900 text-white w-64 p-4 space-y-2 transition-transform duration-300 ease-in-out fixed inset-y-0 left-0 z-20 transform ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:hidden flex flex-col`}>
+        <div className="flex items-center justify-between mb-6">
+          <span className="text-2xl font-semibold text-white"><Link to="/dashboard">{companyName}</Link></span>
+        </div>
+        <nav className="flex-grow" onClick={() => setIsMobileMenuOpen(false)}>
+          <CommonNavItemsComponent currentPath={location.pathname} isSidebarExpanded={true} /> {/* Für Mobile Sidebar ist isSidebarExpanded immer true für die Textanzeige */}
+        </nav>
+        <div onClick={() => setIsMobileMenuOpen(false)}>
+          <NavItem to="/settings" icon={Settings} label="Einstellungen" currentPath={location.pathname} isSidebarExpanded={true} />
+        </div>
+      </aside>
+
+      {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header pageTitle={pageTitle} />
-        <main className="flex-1 p-6 overflow-y-auto bg-gray-100">
+        {/* Header */}
+        <header className="bg-white shadow-sm p-4">
+          <div className="flex justify-between items-center">
+            <div className="md:hidden w-10 h-10"></div> 
+             <div className="text-lg font-semibold text-gray-700">
+                {getPageTitle()}
+             </div>
+            <div className="flex items-center space-x-3">
+              <div className="text-right">
+                <div className="text-sm font-medium text-sky-700">{displayName}</div>
+                <div className="text-xs text-gray-500">{userEmail}</div>
+              </div>
+              <button 
+                onClick={handleLogout} 
+                title="Abmelden"
+                className="p-2 rounded-full hover:bg-red-100 text-red-500 hover:text-red-700 transition-colors duration-200"
+              >
+                <LogOut size={22} />
+              </button>
+            </div>
+          </div>
+        </header>
+        
+        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-slate-50">
           <Outlet />
         </main>
       </div>

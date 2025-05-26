@@ -22,9 +22,13 @@ import AddContactModal from './AddContactModal';
 import EditContactModal from './EditContactModal';
 import { FirestoreContact } from '@/types/contactTypes';
 import { subscribeToContacts, deleteContact as deleteContactService } from '@/services/firebase/contactService';
+import { ContactAssessmentHistory } from './ContactAssessmentHistory';
 
 const contactStatuses = ['alle', 'Kunde', 'Interessent', 'Lead'] as const;
 type ContactStatus = typeof contactStatuses[number];
+
+const leadSources = ['alle', 'Website', 'Referral', 'Advertisement', 'Cold Call', 'Other'] as const;
+type LeadSource = typeof leadSources[number];
 
 const ContactsPage: React.FC = () => {
   const { user } = useAuth();
@@ -32,8 +36,11 @@ const ContactsPage: React.FC = () => {
   const [selectedContact, setSelectedContact] = useState<FirestoreContact | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<ContactStatus>('alle');
-  const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
-  const filterDropdownRef = useRef<HTMLDivElement>(null);
+  const [leadSourceFilter, setLeadSourceFilter] = useState<LeadSource>('alle');
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
+  const [isLeadSourceDropdownOpen, setIsLeadSourceDropdownOpen] = useState(false);
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
+  const leadSourceDropdownRef = useRef<HTMLDivElement>(null);
 
   const [loadingContacts, setLoadingContacts] = useState(true);
   const [errorContacts, setErrorContacts] = useState<string | null>(null);
@@ -46,8 +53,11 @@ const ContactsPage: React.FC = () => {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target as Node)) {
-        setIsFilterDropdownOpen(false);
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(event.target as Node)) {
+        setIsStatusDropdownOpen(false);
+      }
+      if (leadSourceDropdownRef.current && !leadSourceDropdownRef.current.contains(event.target as Node)) {
+        setIsLeadSourceDropdownOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -90,8 +100,9 @@ const ContactsPage: React.FC = () => {
       contact.email.toLowerCase().includes(searchTerm.toLowerCase());
     
     const statusMatch = statusFilter === 'alle' || contact.status === statusFilter;
+    const leadSourceMatch = leadSourceFilter === 'alle' || contact.leadSource === leadSourceFilter;
 
-    return searchMatch && statusMatch;
+    return searchMatch && statusMatch && leadSourceMatch;
   });
 
   const handleDeleteContact = async (contactId: string) => {
@@ -175,31 +186,61 @@ const ContactsPage: React.FC = () => {
           </div>
         </div>
         <div className="flex space-x-3 w-full md:w-auto justify-end">
-          <div className="relative" ref={filterDropdownRef}>
+          <div className="relative" ref={statusDropdownRef}>
             <button 
-              onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)}
+              onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
               className="p-2 border border-gray-300 rounded-lg hover:bg-gray-100 flex items-center space-x-2"
             >
               <Filter className="w-5 h-5 text-gray-600" />
               <span className="text-sm text-gray-700 capitalize hidden sm:inline">
                 {statusFilter === 'alle' ? 'Status' : statusFilter}
               </span>
-              <ChevronDown className={`w-4 h-4 text-gray-600 transition-transform ${isFilterDropdownOpen ? 'rotate-180' : ''}`} />
+              <ChevronDown className={`w-4 h-4 text-gray-600 transition-transform ${isStatusDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
-            {isFilterDropdownOpen && (
+            {isStatusDropdownOpen && (
               <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20 border border-gray-200">
                 {contactStatuses.map(status => (
                   <button
                     key={status}
                     onClick={() => {
                       setStatusFilter(status);
-                      setIsFilterDropdownOpen(false);
+                      setIsStatusDropdownOpen(false);
                     }}
                     className={`w-full text-left px-4 py-2 text-sm ${
                       statusFilter === status ? 'bg-blue-50 text-primary-blue' : 'text-gray-700 hover:bg-gray-100'
                     } capitalize`}
                   >
-                    {status === 'alle' ? 'Alle anzeigen' : status}
+                    {status === 'alle' ? 'Alle Status' : status}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="relative" ref={leadSourceDropdownRef}>
+            <button 
+              onClick={() => setIsLeadSourceDropdownOpen(!isLeadSourceDropdownOpen)}
+              className="p-2 border border-gray-300 rounded-lg hover:bg-gray-100 flex items-center space-x-2"
+            >
+              <Filter className="w-5 h-5 text-gray-600" />
+              <span className="text-sm text-gray-700 capitalize hidden sm:inline">
+                {leadSourceFilter === 'alle' ? 'Lead-Quelle' : leadSourceFilter}
+              </span>
+              <ChevronDown className={`w-4 h-4 text-gray-600 transition-transform ${isLeadSourceDropdownOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {isLeadSourceDropdownOpen && (
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-20 border border-gray-200">
+                {leadSources.map(source => (
+                  <button
+                    key={source}
+                    onClick={() => {
+                      setLeadSourceFilter(source);
+                      setIsLeadSourceDropdownOpen(false);
+                    }}
+                    className={`w-full text-left px-4 py-2 text-sm ${
+                      leadSourceFilter === source ? 'bg-blue-50 text-primary-blue' : 'text-gray-700 hover:bg-gray-100'
+                    } capitalize`}
+                  >
+                    {source === 'alle' ? 'Alle Quellen' : source}
                   </button>
                 ))}
               </div>
@@ -309,120 +350,111 @@ const ContactsPage: React.FC = () => {
       )}
 
       {selectedContact && (
-        <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity duration-300 ease-in-out"
-          onClick={() => setSelectedContact(null)}
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-10" onClick={() => setSelectedContact(null)}></div>
+      )}
+      {selectedContact && (
+        <div className="fixed top-0 right-0 h-full w-full max-w-md bg-white shadow-2xl z-20 transform transition-transform duration-300 ease-in-out overflow-y-auto" 
+             style={{transform: selectedContact ? 'translateX(0)' : 'translateX(100%)'}}
         >
-          <div 
-            className="bg-white rounded-xl shadow-2xl max-w-2xl w-full m-4 max-h-[90vh] overflow-y-auto transform transition-all duration-300 ease-in-out scale-100 opacity-100" 
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
-              <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-bold text-gray-900">{selectedContact.name}</h2>
-                <button 
-                  onClick={() => setSelectedContact(null)}
-                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-            
-            <div className="p-6 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                <div>
-                  <h3 className="font-semibold text-gray-700 mb-2 text-sm uppercase tracking-wider">Kontaktinformationen</h3>
-                  <div className="space-y-2 text-sm">
+          <div className="p-6 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white z-10">
+            <h2 className="text-xl font-semibold text-gray-900">{selectedContact.name}</h2>
+            <button onClick={() => setSelectedContact(null)} className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="p-6 space-y-6">
+            <div>
+                <h3 className="font-semibold text-gray-700 mb-2 text-sm uppercase tracking-wider">Kontaktinformationen</h3>
+                <div className="space-y-2 text-sm">
                     <div className="flex items-start space-x-2 py-1">
-                      <Building className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                      <span className="text-gray-700">{selectedContact.company}</span>
+                        <Building className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                        <span className="text-gray-700">{selectedContact.company || 'N/A'}</span>
                     </div>
                     <div className="flex items-start space-x-2 py-1">
-                      <Mail className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                      <a href={`mailto:${selectedContact.email}`} className="text-primary-blue hover:underline">{selectedContact.email}</a>
+                        <Mail className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                        <a href={`mailto:${selectedContact.email}`} className="text-primary-blue hover:underline">{selectedContact.email}</a>
                     </div>
                     <div className="flex items-start space-x-2 py-1">
-                      <Phone className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                      <a href={`tel:${selectedContact.phone}`} className="text-primary-blue hover:underline">{selectedContact.phone}</a>
+                        <Phone className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                        <a href={`tel:${selectedContact.phone}`} className="text-primary-blue hover:underline">{selectedContact.phone || 'N/A'}</a>
                     </div>
-                  </div>
                 </div>
-                
-                <div>
-                  <h3 className="font-semibold text-gray-700 mb-2 text-sm uppercase tracking-wider">Deal Informationen</h3>
-                  <div className="space-y-1 text-sm">
+            </div>
+
+            <div>
+                <h3 className="font-semibold text-gray-700 mb-2 text-sm uppercase tracking-wider">Deal Informationen</h3>
+                <div className="space-y-1 text-sm">
                     <div className="flex justify-between py-1">
-                      <span className="text-gray-500">Deal Value:</span>
-                      <span className="font-medium text-gray-800">€{selectedContact.dealValue ? selectedContact.dealValue.toLocaleString() : '0'}</span>
+                        <span className="text-gray-500">Deal Value:</span>
+                        <span className="font-medium text-gray-800">€{selectedContact.dealValue ? selectedContact.dealValue.toLocaleString() : '0'}</span>
                     </div>
                     <div className="flex justify-between items-center py-1">
-                      <span className="text-gray-500">Status:</span>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${ 
-                        selectedContact.status === 'Kunde' ? 'bg-success-green-light/20 text-success-green' :
-                        selectedContact.status === 'Interessent' ? 'bg-blue-100 text-primary-blue' :
-                        'bg-gray-200 text-gray-700'
-                      }`}>
-                        {selectedContact.status}
-                      </span>
+                        <span className="text-gray-500">Status:</span>
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${ 
+                            selectedContact.status === 'Kunde' ? 'bg-success-green-light/20 text-success-green' :
+                            selectedContact.status === 'Interessent' ? 'bg-blue-100 text-primary-blue' :
+                            'bg-gray-200 text-gray-700'
+                        }`}>
+                            {selectedContact.status}
+                        </span>
                     </div>
                     <div className="flex justify-between py-1">
-                      <span className="text-gray-500">Deal Stage:</span>
-                      <span className="font-medium text-gray-800">{selectedContact.dealStage || 'N/A'}</span>
+                        <span className="text-gray-500">Deal Stage:</span>
+                        <span className="font-medium text-gray-800">{selectedContact.dealStage || 'N/A'}</span>
                     </div>
                      <div className="flex justify-between py-1">
-                      <span className="text-gray-500">Priorität:</span>
-                      <span className={`font-medium capitalize ${selectedContact.priority === 'high' ? 'text-error-red' : selectedContact.priority === 'medium' ? 'text-warning-orange' : selectedContact.priority === 'low' ? 'text-gray-600' : 'text-gray-500'}`}>{selectedContact.priority || 'N/A'}</span>
+                        <span className="text-gray-500">Priorität:</span>
+                        <span className={`font-medium capitalize ${selectedContact.priority === 'high' ? 'text-error-red' : selectedContact.priority === 'medium' ? 'text-warning-orange' : selectedContact.priority === 'low' ? 'text-gray-600' : 'text-gray-500'}`}>{selectedContact.priority || 'N/A'}</span>
                     </div>
-                  </div>
                 </div>
-              </div>
+            </div>
 
-              <div>
+            <div>
                 <h3 className="font-semibold text-gray-700 mb-2 text-sm uppercase tracking-wider">Tags</h3>
                 <div className="flex flex-wrap gap-2">
-                  {selectedContact.tags && selectedContact.tags.length > 0 ? selectedContact.tags.map((tag, index) => (
-                    <span key={index} className="px-3 py-1 bg-blue-50 text-primary-blue text-xs font-medium rounded-full">
-                      {tag}
-                    </span>
-                  )) : <p className="text-sm text-gray-500">Keine Tags vorhanden.</p>}
+                    {selectedContact.tags && selectedContact.tags.length > 0 ? selectedContact.tags.map((tag, index) => (
+                        <span key={index} className="px-3 py-1 bg-blue-50 text-primary-blue text-xs font-medium rounded-full">
+                            {tag}
+                        </span>
+                    )) : <p className="text-sm text-gray-500">Keine Tags vorhanden.</p>}
                 </div>
-              </div>
+            </div>
 
-              <div>
+            <div>
                 <h3 className="font-semibold text-gray-700 mb-2 text-sm uppercase tracking-wider">Notizen</h3>
                 <p className="text-sm text-gray-600 bg-gray-50 p-4 rounded-lg whitespace-pre-wrap">
-                  {selectedContact.notes || 'Keine Notizen vorhanden.'}
+                    {selectedContact.notes || 'Keine Notizen vorhanden.'}
                 </p>
-              </div>
-
-              <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 pt-4 border-t border-gray-200 mt-6">
-                <button 
-                  onClick={() => {
-                    if(selectedContact) handleOpenEditModal(selectedContact);
-                  }}
-                  className="w-full sm:w-auto flex-1 bg-primary-blue text-white py-2 px-4 rounded-lg hover:bg-primary-blue-dark transition-colors flex items-center justify-center space-x-2 text-sm font-medium">
-                  <Edit3 className="w-4 h-4"/>
-                  <span>Bearbeiten</span>
-                </button>
-                <button 
-                  onClick={async (e) => { 
-                    e.stopPropagation(); 
-                    await handleDeleteContact(selectedContact.id); 
-                  }}
-                  className="w-full sm:w-auto flex-1 border border-gray-300 text-gray-700 py-2 px-4 rounded-lg hover:bg-error-red hover:text-white hover:border-error-red transition-colors flex items-center justify-center space-x-2 text-sm font-medium disabled:opacity-50"
-                  disabled={isDeletingContact}
-                > 
-                  {isDeletingContact ? (
-                    <Loader2 className="w-4 h-4 animate-spin"/>
-                  ) : (
-                    <Trash2 className="w-4 h-4"/>
-                  )}
-                  <span>{isDeletingContact ? "Löschen..." : "Löschen"}</span>
-                </button>
-              </div>
-              {deleteError && <p className="text-xs text-error-red mt-2 text-center">{deleteError}</p>}
             </div>
+            
+            <ContactAssessmentHistory contactId={selectedContact.id} />
+
+            <div className="pt-6 border-t border-gray-200 flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
+              <button 
+                onClick={() => {
+                  if(selectedContact) handleOpenEditModal(selectedContact);
+                }}
+                className="w-full sm:w-auto flex-1 bg-primary-blue text-white py-2 px-4 rounded-lg hover:bg-primary-blue-dark transition-colors flex items-center justify-center space-x-2 text-sm font-medium">
+                <Edit3 className="w-4 h-4"/>
+                <span>Bearbeiten</span>
+              </button>
+              <button 
+                onClick={async (e) => { 
+                  e.stopPropagation(); 
+                  await handleDeleteContact(selectedContact.id); 
+                }}
+                className="w-full sm:w-auto flex-1 border border-gray-300 text-gray-700 py-2 px-4 rounded-lg hover:bg-error-red hover:text-white hover:border-error-red transition-colors flex items-center justify-center space-x-2 text-sm font-medium disabled:opacity-50"
+                disabled={isDeletingContact}
+              > 
+                {isDeletingContact ? (
+                  <Loader2 className="w-4 h-4 animate-spin"/>
+                ) : (
+                  <Trash2 className="w-4 h-4"/>
+                )}
+                <span>{isDeletingContact ? "Löschen..." : "Löschen"}</span>
+              </button>
+            </div>
+            {deleteError && <p className="text-xs text-error-red mt-2 text-center">{deleteError}</p>}
           </div>
         </div>
       )}

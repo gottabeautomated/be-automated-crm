@@ -11,6 +11,7 @@ export interface Contact {
   tags: string[];
   priority: 'high' | 'medium' | 'low'; // More specific type
   notes: string;
+  leadSource: 'Website' | 'Referral' | 'Advertisement' | 'Cold Call' | 'Other';
 }
 
 export interface Activity {
@@ -43,7 +44,8 @@ export const sampleContacts: Contact[] = [
     dealStage: 'Abgeschlossen',
     tags: ['Enterprise', 'CRM', 'DISG Integration'],
     priority: 'high',
-    notes: 'Erfolgreiche Implementierung des €60k CRM-Systems mit DISG-Integration. Sehr zufriedener Kunde.'
+    notes: 'Erfolgreiche Implementierung des €60k CRM-Systems mit DISG-Integration. Sehr zufriedener Kunde.',
+    leadSource: 'Referral'
   },
   {
     id: 2,
@@ -57,7 +59,8 @@ export const sampleContacts: Contact[] = [
     dealStage: 'Verhandlung',
     tags: ['Automation', 'KI-Assessment'],
     priority: 'medium',
-    notes: 'Interessiert an KI-Readiness Assessment. Follow-up nächste Woche geplant.'
+    notes: 'Interessiert an KI-Readiness Assessment. Follow-up nächste Woche geplant.',
+    leadSource: 'Website'
   },
   {
     id: 3,
@@ -71,7 +74,8 @@ export const sampleContacts: Contact[] = [
     dealStage: 'Qualifizierung',
     tags: ['Digitalisierung', 'Assessment'],
     priority: 'low',
-    notes: 'Hat Digital Assessment durchgeführt. Score: 45/100. Braucht Basis-Digitalisierung.'
+    notes: 'Hat Digital Assessment durchgeführt. Score: 45/100. Braucht Basis-Digitalisierung.',
+    leadSource: 'Advertisement'
   }
 ];
 

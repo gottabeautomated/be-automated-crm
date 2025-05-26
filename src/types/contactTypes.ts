@@ -16,6 +16,7 @@ export interface FirestoreContact {
   createdAt: Timestamp;
   updatedAt: Timestamp;
   userId?: string;
+  leadSource?: 'Website' | 'Referral' | 'Advertisement' | 'Cold Call' | 'Other';
 }
 
 export interface ContactFormData {
@@ -30,6 +31,7 @@ export interface ContactFormData {
   priority: 'high' | 'medium' | 'low';
   tags: string;
   notes: string;
+  leadSource: 'Website' | 'Referral' | 'Advertisement' | 'Cold Call' | 'Other';
 }
 
 export interface EditContactFormData extends ContactFormData {} 

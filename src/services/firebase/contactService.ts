@@ -12,7 +12,10 @@ import {
   Timestamp,
   DocumentData,
   QuerySnapshot,
-  FirestoreError
+  FirestoreError,
+  where,
+  limit,
+  getDocs
 } from 'firebase/firestore';
 import { FirestoreContact, ContactFormData, EditContactFormData } from '@/types/contactTypes';
 
@@ -118,4 +121,80 @@ export const subscribeToContacts = (
   );
 
   return unsubscribe;
+};
+
+/**
+ * Findet einen Kontakt anhand seiner E-Mail-Adresse für einen bestimmten Benutzer.
+ * @param userId UID des Benutzers.
+ * @param email E-Mail-Adresse des zu suchenden Kontakts.
+ * @returns Das FirestoreContact-Objekt, falls gefunden, sonst null.
+ */
+export const findContactByEmailService = async (userId: string, email: string): Promise<FirestoreContact | null> => {
+  if (!userId || !email) {
+    console.error("UserID and Email are required to find a contact.");
+    return null;
+  }
+  try {
+    const contactsCollectionRef = collection(db, 'users', userId, 'contacts');
+    const q = query(contactsCollectionRef, where("email", "==", email.toLowerCase()), limit(1)); // Email in Kleinbuchstaben suchen
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+      const docSnapshot = querySnapshot.docs[0];
+      const data = docSnapshot.data() as Omit<FirestoreContact, 'id'>;
+      return {
+        id: docSnapshot.id,
+        ...data,
+        // Sicherstellen, dass Timestamps korrekt sind
+        createdAt: data.createdAt instanceof Timestamp ? data.createdAt : Timestamp.now(), // Fallback, sollte idealerweise immer Timestamp sein
+        updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt : Timestamp.now(), // Fallback
+      } as FirestoreContact;
+    } else {
+      return null;
+    }
+  } catch (error: any) {
+    console.error("Error finding contact by email: ", error);
+    // Werfe den Fehler nicht weiter, damit der aufrufende Service entscheiden kann, wie er damit umgeht (z.B. neuen Lead erstellen)
+    return null; 
+  }
+};
+
+export interface ContactQuickSelectItem {
+  id: string;
+  name: string; // Kombinierter Name für die Anzeige
+}
+
+/**
+ * Lädt eine vereinfachte Liste von Kontakten (ID und Name) für einen Benutzer.
+ * Nützlich für Dropdown-Auswahlen.
+ * @param userId UID des Benutzers.
+ * @returns Ein Promise, das ein Array von ContactQuickSelectItem auflöst.
+ */
+export const getContactListForUser = async (userId: string): Promise<ContactQuickSelectItem[]> => {
+  if (!userId) {
+    console.error("UserID is required to get contact list.");
+    return [];
+  }
+  try {
+    const contactsCollectionRef = collection(db, 'users', userId, 'contacts');
+    // Sortieren nach dem Feld 'name'
+    const q = query(contactsCollectionRef, orderBy('name', 'asc'));
+    const querySnapshot = await getDocs(q);
+
+    const contactList: ContactQuickSelectItem[] = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data() as Partial<Pick<FirestoreContact, 'name'>>; // name statt firstName/lastName
+      // Stelle sicher, dass name vorhanden ist
+      const contactName = data.name || 'Unbenannter Kontakt';
+      contactList.push({
+        id: doc.id,
+        name: contactName
+      });
+    });
+    return contactList;
+  } catch (error: any) {
+    console.error("Error fetching contact list for user: ", error);
+    // Im Fehlerfall eine leere Liste zurückgeben, damit die UI nicht bricht
+    return []; 
+  }
 }; 
