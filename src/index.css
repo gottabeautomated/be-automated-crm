@@ -122,4 +122,145 @@ body {
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Benutzerdefiniertes CSS für den Mini-Kalender */
+.mini-calendar-custom {
+  border: none;
+  font-family: inherit;
+  width: 100%;
+  background-color: white; /* Sicherstellen, dass der Kalenderhintergrund weiß ist */
+}
+
+/* Navigation (Pfeile, Monatsanzeige) */
+.mini-calendar-custom .react-calendar__navigation {
+  display: flex;
+  margin-bottom: 0.5em;
+  align-items: center; /* Zentriert Elemente vertikal */
+}
+
+.mini-calendar-custom .react-calendar__navigation button {
+  min-width: 30px;
+  font-size: 0.9rem;
+  padding: 0.1em 0.3em;
+  background-color: #f0f0f0; /* Heller grauer Hintergrund für Buttons */
+  color: #333; /* Dunkle Textfarbe für Buttons */
+  border: 1px solid #ccc; /* Heller grauer Rand */
+  cursor: pointer;
+  margin: 0 2px; /* Kleiner Abstand zwischen Buttons */
+}
+
+.mini-calendar-custom .react-calendar__navigation button:hover {
+  background-color: #e0e0e0;
+}
+
+.mini-calendar-custom .react-calendar__navigation button:disabled {
+  background-color: #f8f8f8;
+  color: #aaa;
+  cursor: default;
+}
+
+.mini-calendar-custom .react-calendar__navigation__label {
+  font-weight: bold;
+  color: #333; /* Dunkle Textfarbe für Monatsanzeige */
+  flex-grow: 1;
+  text-align: center;
+  padding: 0.2em 0;
+}
+
+/* Wochentage */
+.mini-calendar-custom .react-calendar__month-view__weekdays {
+  margin-bottom: 0.3em;
+}
+.mini-calendar-custom .react-calendar__month-view__weekdays__weekday {
+  font-size: 0.65rem;
+  text-align: center;
+  padding: 0.2em;
+  font-weight: bold;
+  color: #666; /* Graue Farbe für Wochentage */
+}
+
+.mini-calendar-custom .react-calendar__month-view__weekdays__weekday abbr {
+  text-decoration: none;
+}
+
+/* Tage (Kacheln) */
+.mini-calendar-custom .react-calendar__tile {
+  padding: 0.4em 0.2em; /* Etwas mehr vertikales Padding */
+  font-size: 0.7rem;
+  max-width: 100%;
+  text-align: center;
+  background-color: transparent;
+  border-radius: 4px;
+  color: #333; /* Dunkle Textfarbe für Tage */
+  border: 1px solid transparent;
+  line-height: 1.2; /* Stellt sicher, dass die Zahl Platz hat */ 
+}
+
+.mini-calendar-custom .react-calendar__tile:hover {
+  background-color: #e6e6e6;
+}
+
+.mini-calendar-custom .react-calendar__tile:disabled {
+  color: #ccc;
+  background-color: transparent;
+}
+
+.mini-calendar-custom .react-calendar__tile--now {
+  background-color: #cfe8fc;
+  font-weight: bold;
+  color: #0056b3;
+  border: 1px solid #a1d3f7;
+}
+.mini-calendar-custom .react-calendar__tile--now:hover {
+  background-color: #b8dcf7;
+}
+
+.mini-calendar-custom .react-calendar__tile--active {
+  background-color: #007bff; /* Blauer Hintergrund für aktiven Tag */
+  color: white;
+}
+
+.mini-calendar-custom .react-calendar__tile--active:hover {
+  background-color: #0056b3;
+}
+
+.mini-calendar-custom .react-calendar__month-view__days__day--weekend {
+   color: #d9534f; /* Rötliche Farbe für Wochenenden, optional */
+}
+.mini-calendar-custom .react-calendar__month-view__days__day--neighboringMonth {
+  color: #aaa; /* Gedämpfte Farbe für Tage aus anderen Monaten */
+  opacity: 0.7;
+}
+
+/* Anpassung des Containers in MiniCalendar.tsx */
+.mini-calendar-wrapper div.bg-card { 
+  /* Diese Regel ist wahrscheinlich nicht notwendig oder falsch, 
+     da der Wrapper selbst bg-card hat und nicht ein Kind-Div. 
+     Der Wrapper soll ja den weißen Hintergrund von bg-card behalten. */
+  /* background-color: transparent !important; */
+  /* box-shadow: none !important; */
+  /* border: none !important; */
+}
+
+.mini-calendar-wrapper h4.text-card-foreground {
+  /* Entferne die white !important Regel, damit die text-card-foreground Farbe greift */
+  /* color: white !important; */ 
+} 
+
+/* Hervorhebung für den vom Mini-Kalender ausgewählten Tag im Hauptkalender */
+.highlighted-day-from-mini-calendar {
+  background-color: #e6f7ff !important; /* Helles Blau, !important um andere Hintergrundstile zu überschreiben */
+  /* Optional: ein leichter Rand */
+  /* border: 1px solid #91d5ff !important; */ 
+}
+
+/* Marker für Tage mit Terminen im Mini-Kalender */
+.event-marker {
+  width: 5px;
+  height: 5px;
+  background-color: red;
+  border-radius: 50%;
+  margin: 2px auto 0; /* Zentriert den Punkt unter der Tageszahl */
+  position: relative; /* Stellt sicher, dass es im Fluss bleibt, falls Kachel Padding hat */
 } 

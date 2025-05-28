@@ -1,15 +1,16 @@
 import { Timestamp } from 'firebase/firestore';
+import { PipelineStage as GlobalPipelineStage } from '@/types/pipelineTypes'; // Importiere den globalen Typ
 
-export const PIPELINE_STAGES = [
-  'Lead',
-  'Qualifiziert',
-  'Angebot',
-  'Verhandlung',
-  'Abgeschlossen',
-  'Verloren',
-] as const;
+// export const PIPELINE_STAGES = [ // Entfernt
+//   'Lead',
+//   'Qualifiziert',
+//   'Angebot',
+//   'Verhandlung',
+//   'Abgeschlossen',
+//   'Verloren',
+// ] as const;
 
-export type PipelineStage = typeof PIPELINE_STAGES[number];
+// export type PipelineStage = typeof PIPELINE_STAGES[number]; // Entfernt
 
 export interface Deal {
   id: string;
@@ -17,7 +18,7 @@ export interface Deal {
   company: string;
   value: number;
   probability: number; // In Prozent, z.B. 75 für 75%
-  stage: PipelineStage;
+  stageId: string; // Geändert von stage: PipelineStage zu stageId: string, um die ID der globalen Stage zu speichern
   contactId?: string; // Optional, um einen Deal mit einem Kontakt zu verknüpfen
   assignedUserId?: string; // Für spätere Filterung nach zugewiesenem Benutzer
   userId: string; // ID des Benutzers, dem dieser Deal gehört
@@ -35,7 +36,7 @@ export interface DealFormData {
   companyName: string;
   value: string;
   probability: string;
-  stage: PipelineStage;
+  stageId: string; // Geändert von stage: PipelineStage zu stageId: string
   expectedCloseDate?: string;
   description?: string;
   contactId?: string;

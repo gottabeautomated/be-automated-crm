@@ -1,17 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Deal } from '@/types/dealTypes';
 import { DollarSign, Briefcase, Percent, MoreVertical, Edit2, Trash2, Eye, UserCircle, CalendarClock } from 'lucide-react';
-import { DraggableProvidedDraggableProps, DraggableProvidedDragHandleProps } from '@hello-pangea/dnd';
 
 interface DealCardProps {
   deal: Deal;
-  index: number; // Required for Draggable
   onEdit: (deal: Deal) => void;
   onDelete: (dealId: string) => void;
   onViewDetails: (deal: Deal) => void;
-  innerRef?: (element: HTMLElement | null) => void; // From Draggable
-  draggableProps?: DraggableProvidedDraggableProps | null; // From Draggable
-  dragHandleProps?: DraggableProvidedDragHandleProps | null; // From Draggable
+  stageColor?: string;
 }
 
 // Helper function for placeholder color based on title (simple hash)
@@ -26,20 +22,26 @@ const getTitleColor = (title: string) => {
 };
 
 // Helper for deal age or priority (placeholder)
-const getDealPriorityIndicator = (deal: Deal): string => {
+const getDealPriorityIndicator = (deal: Deal, stageColor?: string): string => {
   // Simple logic: if expected close date is in the past, color it red
   // More complex logic can be added for age/priority
-  if (deal.expectedCloseDate) { // Check if expectedCloseDate is defined
+  if (deal.expectedCloseDate) { 
     try {
-      const closeDate = deal.expectedCloseDate.toDate(); // Convert Firestore Timestamp to Date
-      if (closeDate < new Date() && deal.stage !== 'Abgeschlossen' && deal.stage !== 'Verloren') {
-        return 'border-error-red'; // Tailwind class for red border
+      const closeDate = deal.expectedCloseDate.toDate();
+      // Annahme: 'Gewonnen' und 'Verloren' sind die Namen/IDs der Endphasen.
+      // Dies sollte idealerweise über eine Eigenschaft der Phase geprüft werden (z.B. type: 'closed')
+      // Da wir hier nur die Deal-Daten haben, prüfen wir gegen die stageId.
+      // Die stageId 'won' und 'lost' aus initialStages in PipelineSettingsTab.tsx als Referenz.
+      if (closeDate < new Date() && deal.stageId !== 'won' && deal.stageId !== 'lost') {
+        return 'border-error-red'; 
       }
     } catch (e) { 
       console.warn("Invalid date format for deal.expectedCloseDate: ", deal.expectedCloseDate, e);
     }
   }
-  return 'border-transparent'; // Default: no special border
+  // Wenn eine stageColor übergeben wird, diese für den linken Rand verwenden.
+  // Ansonsten transparenter Rand.
+  return stageColor ? `border-[${stageColor}]` : 'border-transparent'; 
 };
 
 const DealCard: React.FC<DealCardProps> = ({ 
@@ -47,12 +49,10 @@ const DealCard: React.FC<DealCardProps> = ({
   onEdit, 
   onDelete, 
   onViewDetails, 
-  innerRef, 
-  draggableProps, 
-  dragHandleProps 
+  stageColor
 }) => {
   const cardColorStyle = getTitleColor(deal.title);
-  const priorityBorderStyle = getDealPriorityIndicator(deal);
+  const priorityBorderStyle = getDealPriorityIndicator(deal, stageColor);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -88,16 +88,11 @@ const DealCard: React.FC<DealCardProps> = ({
 
   return (
     <div 
-      ref={innerRef} 
-      {...draggableProps} 
-      {...dragHandleProps}
       className={`bg-white p-3.5 rounded-lg shadow-md hover:shadow-lg transition-shadow mb-3 border-l-4 ${priorityBorderStyle}`}
     >
       <div className="flex justify-between items-start mb-2">
         <div className="flex items-start">
-          {/* Drag handle can be a specific icon later, for now the whole card is draggable */}
-          {/* <GripVertical size={18} className="mr-2 text-slate-400 cursor-grab" {...dragHandleProps} /> */}
-          <ContactAvatar companyName={deal.company || ''} /> {/* Use deal.company and provide fallback */}
+          <ContactAvatar companyName={deal.company || ''} />
           <div>
             <h3 
               className="font-semibold text-sky-700 text-sm leading-tight cursor-pointer hover:underline truncate"
@@ -106,7 +101,7 @@ const DealCard: React.FC<DealCardProps> = ({
             >
               {deal.title}
             </h3>
-            <p className="text-xs text-slate-500 truncate" title={deal.company || ''}> {/* Use deal.company and provide fallback */}
+            <p className="text-xs text-slate-500 break-words" title={deal.company || ''}>
               <Briefcase size={12} className="inline mr-1 mb-0.5" />{deal.company || 'N/A'}
             </p>
           </div>

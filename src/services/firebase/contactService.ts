@@ -18,6 +18,7 @@ import {
   getDocs
 } from 'firebase/firestore';
 import { FirestoreContact, ContactFormData, EditContactFormData } from '@/types/contactTypes';
+import { toast } from 'sonner';
 
 /**
  * Erstellt einen neuen Kontakt in Firestore für den gegebenen Benutzer.
@@ -195,6 +196,42 @@ export const getContactListForUser = async (userId: string): Promise<ContactQuic
   } catch (error: any) {
     console.error("Error fetching contact list for user: ", error);
     // Im Fehlerfall eine leere Liste zurückgeben, damit die UI nicht bricht
+    return []; 
+  }
+};
+
+/**
+ * Ruft alle Kontakte eines Benutzers für den CSV-Export ab.
+ * @param userId UID des Benutzers.
+ * @returns Ein Promise, das ein Array von FirestoreContact-Objekten auflöst.
+ */
+export const getAllContactsForExport = async (userId: string): Promise<FirestoreContact[]> => {
+  if (!userId) {
+    console.error("UserID is required to get all contacts for export.");
+    return [];
+  }
+  try {
+    const contactsCollectionRef = collection(db, 'users', userId, 'contacts');
+    const q = query(contactsCollectionRef, orderBy('createdAt', 'desc')); // Sortierung kann angepasst werden
+    const querySnapshot = await getDocs(q);
+
+    const contacts: FirestoreContact[] = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data() as Omit<FirestoreContact, 'id'>;
+      contacts.push({
+        id: doc.id,
+        ...data,
+        // Sicherstellen, dass Timestamp-Felder als ISO-Strings oder ein anderes lesbares Format exportiert werden
+        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
+        updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : new Date().toISOString(),
+        lastContact: data.lastContact ? (typeof data.lastContact === 'string' ? data.lastContact : (data.lastContact as Timestamp).toDate().toISOString().split('T')[0]) : '',
+        tags: Array.isArray(data.tags) ? data.tags.join(', ') : '', // Tags als kommaseparierten String
+      } as unknown as FirestoreContact); // TypeScript braucht hier etwas Hilfe wegen der Timestamps/Tags Transformation
+    });
+    return contacts;
+  } catch (error: any) {
+    console.error("Error fetching all contacts for export: ", error);
+    toast.error("Fehler beim Abrufen der Kontakte für den Export.");
     return []; 
   }
 }; 

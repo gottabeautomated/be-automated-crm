@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { PlusCircle, MoreVertical, Edit2, Trash2, DollarSign, Briefcase, Users, BarChart, CalendarDays, Tag, StickyNote, GripVertical, Filter, Search, Move } from 'lucide-react';
 import { useAuth } from '@/services/firebase/AuthProvider';
-import { Deal, DealFormData, PIPELINE_STAGES as DEAL_STAGES, PipelineStage } from '@/types/dealTypes';
+import { Deal, DealFormData } from '@/types/dealTypes';
+import { PipelineStage as GlobalPipelineStage } from '@/types/pipelineTypes';
+import { getPipelineStages } from '@/services/firebase/pipelineService';
 import { 
   subscribeToDealsService, 
   deleteDealService, 
@@ -12,30 +14,37 @@ import DealCard from './DealCard';
 import EditDealModal from './EditDealModal';
 import DealDetailModal from './DealDetailModal';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-// import DealDetailModal from './DealDetailModal'; // To be created
 
 const DealsPage: React.FC = () => {
   const { user: currentUser, loading: authLoading } = useAuth();
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [pipelineStages, setPipelineStages] = useState<GlobalPipelineStage[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // TODO: States for Modals: isAddModalOpen, isEditModalOpen, selectedDeal
   const [isAddDealModalOpen, setIsAddDealModalOpen] = useState(false);
-  
-  // TODO: States for other modals (edit, details)
-  const [isEditDealModalOpen, setIsEditDealModalOpen] = useState(false); // State für Edit Modal
+  const [isEditDealModalOpen, setIsEditDealModalOpen] = useState(false);
   const [selectedDealForEdit, setSelectedDealForEdit] = useState<Deal | null>(null);
   const [selectedDealForDetails, setSelectedDealForDetails] = useState<Deal | null>(null);
-
-  // TODO: States for search and filters
   const [searchTerm, setSearchTerm] = useState('');
-  // ... other filter states (dateRange, valueRange, tags)
-
-  const [isDealDetailModalOpen, setIsDealDetailModalOpen] = useState(false); // State für Detail-Modal Sichtbarkeit
+  const [isDealDetailModalOpen, setIsDealDetailModalOpen] = useState(false);
 
   useEffect(() => {
-    if (currentUser) {
+    const fetchGlobalStages = async () => {
+      try {
+        const stages = await getPipelineStages();
+        setPipelineStages(stages.sort((a, b) => a.order - b.order));
+      } catch (err) {
+        console.error("Fehler beim Laden der globalen Pipeline-Phasen:", err);
+        setError("Fehler beim Laden der Pipeline-Konfiguration.");
+        setPipelineStages([]);
+      }
+    };
+    fetchGlobalStages();
+  }, []);
+
+  useEffect(() => {
+    if (currentUser && pipelineStages.length > 0) {
       setIsLoading(true);
       const unsubscribe = subscribeToDealsService(
         currentUser.uid,
@@ -51,11 +60,13 @@ const DealsPage: React.FC = () => {
         }
       );
       return () => unsubscribe();
-    } else if (!authLoading) { // Nur ausführen, wenn Authentifizierung abgeschlossen ist
+    } else if (!authLoading) {
       setDeals([]);
       setIsLoading(false);
+      if (pipelineStages.length === 0 && !error) {
+      }
     }
-  }, [currentUser, authLoading]);
+  }, [currentUser, authLoading, pipelineStages, error]);
 
   const handleAddDealModalOpen = () => setIsAddDealModalOpen(true);
   const handleAddDealModalClose = () => setIsAddDealModalOpen(false);
@@ -74,7 +85,6 @@ const DealsPage: React.FC = () => {
     if (window.confirm("Sind Sie sicher, dass Sie diesen Deal löschen möchten?")) {
       try {
         await deleteDealService(currentUser.uid, dealId);
-        // Subscription wird UI aktualisieren
       } catch (err) {
         console.error("Error deleting deal:", err);
         setError("Fehler beim Löschen des Deals.");
@@ -84,16 +94,13 @@ const DealsPage: React.FC = () => {
 
   const handleViewDetails = (deal: Deal) => {
     setSelectedDealForDetails(deal);
-    setIsDealDetailModalOpen(true); // Modal öffnen
-    // console.log("View details:", deal);
+    setIsDealDetailModalOpen(true);
   };
 
-  const handleMoveDeal = async (dealId: string, newStage: Deal['stage']) => {
+  const handleMoveDeal = async (dealId: string, newStageId: string) => {
     if (!currentUser) return;
     try {
-      await updateDealStageService(currentUser.uid, dealId, newStage);
-      // Optimistic update (optional, da Firebase Listener aktualisiert)
-      // setDeals(prevDeals => prevDeals.map(d => d.id === dealId ? {...d, stage: newStage } : d));
+      await updateDealStageService(currentUser.uid, dealId, newStageId, pipelineStages);
     } catch (err) {
       console.error("Error moving deal:", err);
       setError("Fehler beim Verschieben des Deals.");
@@ -103,39 +110,35 @@ const DealsPage: React.FC = () => {
   const onDragEnd = (result: DropResult) => {
     const { destination, source, draggableId } = result;
 
-    // Do nothing if dropped outside a droppable area
-    if (!destination) {
-      return;
-    }
+    if (!destination) return;
+    if (destination.droppableId === source.droppableId && destination.index === source.index) return;
 
-    // Do nothing if dropped in the same place
-    if (
-      destination.droppableId === source.droppableId &&
-      destination.index === source.index
-    ) {
-      return;
-    }
-
-    const newStage = destination.droppableId as PipelineStage;
-    // It's good practice to ensure the newStage is actually a valid stage
-    if (!DEAL_STAGES.includes(newStage)) {
-        console.error("Invalid destination stage:", newStage);
+    const newStageId = destination.droppableId;
+    
+    if (!pipelineStages.find(stage => stage.id === newStageId)) {
+        console.error("Invalid destination stage ID:", newStageId);
         return;
     }
 
-    handleMoveDeal(draggableId, newStage);
+    handleMoveDeal(draggableId, newStageId);
   };
 
   const filteredDeals = useMemo(() => {
     return deals.filter(deal => 
       deal.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       deal.company.toLowerCase().includes(searchTerm.toLowerCase())
-      // TODO: Add other filter logic here
     );
   }, [deals, searchTerm]);
+  
+  const getStageNameById = (stageId: string): string => {
+    const stage = pipelineStages.find(s => s.id === stageId);
+    return stage ? stage.name : "Unbekannte Phase";
+  };
 
   const pipelineStats = useMemo(() => {
-    const activeDeals = filteredDeals.filter(d => d.stage !== 'Abgeschlossen' && d.stage !== 'Verloren');
+    const closedStageIds = pipelineStages.filter(s => s.name === 'Gewonnen' || s.name === 'Verloren').map(s => s.id);
+    
+    const activeDeals = filteredDeals.filter(d => !closedStageIds.includes(d.stageId));
     const totalValue = activeDeals.reduce((sum, deal) => sum + deal.value, 0);
     const dealsCount = activeDeals.length;
     const averageDealSize = dealsCount > 0 ? totalValue / dealsCount : 0;
@@ -144,32 +147,36 @@ const DealsPage: React.FC = () => {
       dealsCount,
       averageDealSize
     };
-  }, [filteredDeals]);
+  }, [filteredDeals, pipelineStages]);
 
-  if (isLoading || authLoading) { // authLoading ebenfalls berücksichtigen
-    return <div className="p-6 text-center text-sky-700">Lade Deals...</div>;
+  if (authLoading || (isLoading && deals.length === 0 && pipelineStages.length === 0) ) {
+    return <div className="p-6 text-center text-sky-700">Lade Daten...</div>;
   }
 
   if (error) {
     return <div className="p-6 text-red-500 text-center">{error}</div>;
   }
+  
+  if (pipelineStages.length === 0 && !error) {
+    return <div className="p-6 text-center text-orange-500">Pipeline-Konfiguration wird geladen oder ist nicht vorhanden. Bitte überprüfen Sie die <a href="/settings" className="underline">Einstellungen</a>.</div>;
+  }
 
   return (
-    <div className="p-4 md:p-6 bg-slate-50 min-h-screen flex flex-col">
+    <div className="p-4 md:p-6 bg-slate-50 min-h-screen flex flex-col overflow-x-hidden min-w-0 max-w-6xl mx-auto">
       <header className="mb-6">
         <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-4">
             <h1 className="text-3xl font-bold text-sky-800 mb-3 sm:mb-0">Deal Pipeline</h1>
             <button
             onClick={handleAddDealModalOpen}
-            disabled={!currentUser} // Button deaktivieren, wenn kein Benutzer angemeldet ist
-            className={`font-semibold py-2 px-4 rounded-lg shadow-md hover:shadow-lg transition-all duration-150 ease-in-out flex items-center w-full sm:w-auto justify-center ${currentUser ? 'bg-sky-600 hover:bg-sky-700 text-white' : 'bg-gray-400 text-gray-700 cursor-not-allowed'}`}
+            disabled={!currentUser || pipelineStages.length === 0} 
+            className={`font-semibold py-2 px-4 rounded-lg shadow-md hover:shadow-lg transition-all duration-150 ease-in-out flex items-center w-full sm:w-auto justify-center ${currentUser && pipelineStages.length > 0 ? 'bg-sky-600 hover:bg-sky-700 text-white' : 'bg-gray-400 text-gray-700 cursor-not-allowed'}`}
+            title={pipelineStages.length === 0 ? "Pipeline-Konfiguration nicht geladen" : "Neuen Deal erstellen"}
             >
             <PlusCircle size={20} className="mr-2" />
             Neuer Deal
             </button>
         </div>
 
-        {/* Stats Bar */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 bg-white p-4 rounded-lg shadow">
           <div className="text-center">
             <p className="text-sm text-slate-500">Gesamtwert Pipeline</p>
@@ -185,7 +192,6 @@ const DealsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Filter and Search Bar */}
         <div className="flex flex-col md:flex-row gap-3 mb-2 p-3 bg-white rounded-lg shadow items-center">
             <div className="relative flex-grow w-full md:w-auto">
                 <input 
@@ -198,99 +204,107 @@ const DealsPage: React.FC = () => {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
             </div>
             <button className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg flex items-center w-full md:w-auto justify-center">
-                <Filter size={18} className="mr-1.5" /> Filter
+                 <Filter size={18} className="mr-2"/> Filter
             </button>
-            {/* TODO: Add more filter inputs here (date range, value range, tags) */}
         </div>
       </header>
 
-      {isAddDealModalOpen && currentUser && (
-        <AddDealModal 
-          isOpen={isAddDealModalOpen} 
-          onClose={handleAddDealModalClose} 
-          userId={currentUser.uid}
-        />
-      )}
-
-      {isEditDealModalOpen && selectedDealForEdit && currentUser && (
-        <EditDealModal
-          isOpen={isEditDealModalOpen}
-          onClose={handleEditDealModalClose}
-          userId={currentUser.uid}
-          dealToEdit={selectedDealForEdit}
-          // onDealUpdated={() => console.log("Deal updated, refresh maybe?")}
-        />
-      )}
-
-      {isDealDetailModalOpen && selectedDealForDetails && (
-        <DealDetailModal
-          isOpen={isDealDetailModalOpen}
-          onClose={() => setIsDealDetailModalOpen(false)}
-          deal={selectedDealForDetails}
-        />
-      )}
-
-      {!currentUser && !authLoading && (
-        <div className="text-center text-slate-500 py-10 flex-grow flex items-center justify-center">
-          <p>Bitte melden Sie sich an, um Ihre Deals zu sehen.</p>
-        </div>
-      )}
-
-      {currentUser && filteredDeals.length === 0 && !isLoading && (
-         <div className="text-center text-slate-500 py-10 flex-grow flex items-center justify-center">
-            <p>Noch keine Deals vorhanden oder Filterkriterien ergaben keine Treffer. Erstellen Sie Ihren ersten Deal!</p>
-        </div>
-      )}
-
-      {currentUser && filteredDeals.length > 0 && (
+      {currentUser && pipelineStages.length > 0 ? (
         <DragDropContext onDragEnd={onDragEnd}>
-          <div className="flex-grow grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 overflow-x-auto pb-4">
-            {DEAL_STAGES.map((stage) => (
-              <div key={stage} className="bg-slate-100 p-3 rounded-lg shadow flex flex-col min-w-[280px]">
-                <div className="flex justify-between items-center mb-3">
-                    <h2 className="font-semibold text-sky-700 capitalize flex items-center">
-                      {stage}
-                    </h2>
-                    <span className="text-sm font-medium text-slate-500 bg-slate-200 px-2 py-0.5 rounded-full">
-                        {filteredDeals.filter(d => d.stage === stage).length}
-                    </span>
-                </div>
-                <Droppable droppableId={stage} key={stage}> 
+          <div className="w-full pb-4">
+            <div className="flex flex-col gap-4">
+              {pipelineStages.map((stage) => (
+                <Droppable key={stage.id} droppableId={stage.id}>
                   {(provided, snapshot) => (
                     <div
                       ref={provided.innerRef}
                       {...provided.droppableProps}
-                      className={`flex-grow min-h-[250px] overflow-y-auto p-1 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100 space-y-2 ${snapshot.isDraggingOver ? 'bg-sky-100' : ''}`}
+                      className={`bg-slate-100 p-3 rounded-lg shadow-sm w-full ${snapshot.isDraggingOver ? 'bg-sky-100' : ''}`}
                     >
-                      {filteredDeals
-                        .filter(deal => deal.stage === stage)
-                        .map((deal, index) => (
-                          <Draggable key={deal.id} draggableId={deal.id} index={index}>
-                            {(providedDraggable, snapshotDraggable) => (
-                              <DealCard 
-                                  deal={deal} 
-                                  index={index}
-                                  onEdit={handleEditDealModalOpen}
-                                  onDelete={handleDeleteDeal}
-                                  onViewDetails={handleViewDetails}
-                                  innerRef={providedDraggable.innerRef}
-                                  draggableProps={providedDraggable.draggableProps}
-                                  dragHandleProps={providedDraggable.dragHandleProps}
-                              />
-                            )}
-                          </Draggable>
-                        ))}
-                      {provided.placeholder}
-                      {filteredDeals.filter(d => d.stage === stage).length === 0 && !snapshot.isDraggingOver && (
-                        <p className="text-sm text-slate-400 text-center pt-10">Keine Deals in dieser Phase.</p>
-                      )}
+                      <div className="flex justify-between items-center mb-3">
+                        <h2 className="text-lg font-semibold text-slate-700" style={{ color: stage.color || 'inherit' }}>
+                          {stage.name}
+                        </h2>
+                        <span className="text-sm text-slate-500 bg-slate-200 px-2 py-1 rounded-full">
+                          {filteredDeals.filter(deal => deal.stageId === stage.id).length}
+                        </span>
+                      </div>
+                      <div className="space-y-3 min-h-[100px]">
+                        {filteredDeals
+                          .filter(deal => deal.stageId === stage.id)
+                          .sort((a,b) => (a.updatedAt?.toMillis() || 0) - (b.updatedAt?.toMillis() || 0))
+                          .map((deal, index) => (
+                            <Draggable key={deal.id} draggableId={deal.id} index={index}>
+                              {(providedDraggable, snapshotDraggable) => (
+                                <div
+                                  ref={providedDraggable.innerRef}
+                                  {...providedDraggable.draggableProps}
+                                  {...providedDraggable.dragHandleProps}
+                                  style={{
+                                    ...providedDraggable.draggableProps.style,
+                                    boxShadow: snapshotDraggable.isDragging ? '0 4px 8px rgba(0,0,0,0.1)' : 'none',
+                                  }}
+                                >
+                                  <DealCard 
+                                    deal={deal} 
+                                    onViewDetails={() => handleViewDetails(deal)}
+                                    onEdit={() => handleEditDealModalOpen(deal)}
+                                    onDelete={() => handleDeleteDeal(deal.id)}
+                                    stageColor={stage.color}
+                                  />
+                                </div>
+                              )}
+                            </Draggable>
+                          ))}
+                        {provided.placeholder}
+                      </div>
                     </div>
                   )}
                 </Droppable>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </DragDropContext>
+      ) : (
+         !isLoading && <div className="text-center p-6 text-slate-600">Keine Deals vorhanden oder Pipeline nicht geladen.</div>
+      )}
+
+      {isAddDealModalOpen && (
+        <AddDealModal
+          isOpen={isAddDealModalOpen}
+          onClose={handleAddDealModalClose}
+          userId={currentUser!.uid}
+          pipelineStages={pipelineStages}
+        />
+      )}
+       {isEditDealModalOpen && selectedDealForEdit && (
+        <EditDealModal
+          isOpen={isEditDealModalOpen}
+          onClose={handleEditDealModalClose}
+          deal={selectedDealForEdit}
+          userId={currentUser!.uid}
+          pipelineStages={pipelineStages}
+        />
+      )}
+      {isDealDetailModalOpen && selectedDealForDetails && (
+        <DealDetailModal
+            isOpen={isDealDetailModalOpen}
+            onClose={() => {
+                setIsDealDetailModalOpen(false);
+                setSelectedDealForDetails(null);
+            }}
+            deal={selectedDealForDetails}
+            getStageNameById={getStageNameById}
+            onEdit={() => {
+                setIsDealDetailModalOpen(false);
+                handleEditDealModalOpen(selectedDealForDetails);
+            }}
+            onDelete={() => {
+                setIsDealDetailModalOpen(false);
+                handleDeleteDeal(selectedDealForDetails.id);
+                setSelectedDealForDetails(null);
+            }}
+        />
       )}
     </div>
   );

@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { logoutUser, updateUserProfile } from '@/services/firebase/authService';
 import { useAuth } from '@/services/firebase/AuthProvider';
+import MiniCalendar from './MiniCalendar'; // Import des MiniCalendar
 
 interface NavItem {
   id: string;
@@ -37,7 +38,8 @@ const navItems: NavItem[] = [
   { id: 'activities', label: 'Aktivitäten', icon: ActivityIcon, path: '/activities' }, // Assuming /activities path
   { id: 'assessments', label: 'Assessments', icon: FileText, path: '/assessments' },
   { id: 'calendar', label: 'Kalender', icon: Calendar, path: '/calendar' }, // Assuming /calendar path
-  { id: 'settings', label: 'Einstellungen', icon: Settings, path: '/settings' }, // Assuming /settings path
+  { id: 'reports', label: 'Reports', icon: BarChart2, path: '/reports' },
+  // { id: 'settings', label: 'Einstellungen', icon: Settings, path: '/settings' }, // Assuming /settings path // Temporarily commented out if it exists
 ];
 
 const Sidebar: React.FC<{ sidebarOpen: boolean; setSidebarOpen: (open: boolean) => void; activeTab: string; setActiveTab: (tab: string) => void }> = 
@@ -236,6 +238,9 @@ const MainLayout: React.FC = () => {
       {/* Die obige "Assessments"-Route wird ggf. durch die neuen ersetzt oder umfunktioniert */}
       <NavItem to="/assessment-hub" icon={Briefcase} label="Assessment Hub" currentPath={currentPath} isSidebarExpanded={isSidebarExpanded} />
       <NavItem to="/assessment-results" icon={FileText} label="Assessment Ergebnisse" currentPath={currentPath} isSidebarExpanded={isSidebarExpanded} /> {/* Neuer Navigationspunkt */}
+      <NavItem to="/settings" icon={Settings} label="Einstellungen" currentPath={currentPath} isSidebarExpanded={isSidebarExpanded} /> {/* Hinzugefügter Navigationspunkt für Einstellungen */}
+      <NavItem to="/tasks" icon={CheckSquare} label="Aufgaben" currentPath={currentPath} isSidebarExpanded={isSidebarExpanded} />
+      <NavItem to="/reports" icon={BarChart2} label="Reports" currentPath={currentPath} isSidebarExpanded={isSidebarExpanded} />
       {/* Zukünftige Navigationspunkte hier einfügen */}
     </>
   );
@@ -248,18 +253,46 @@ const MainLayout: React.FC = () => {
     <div className="flex h-screen bg-slate-100">
       {/* Desktop Sidebar */}
       <aside className={`bg-sky-900 text-white ${isSidebarExpanded ? 'w-64' : 'w-20'} p-4 space-y-2 transition-all duration-300 ease-in-out hidden md:flex flex-col`}>
-        <div className={`flex items-center ${isSidebarExpanded ? 'justify-between' : 'justify-center'} mb-6`}>
-          {isSidebarExpanded && <span className="text-2xl font-semibold text-white"><Link to="/dashboard">{companyName}</Link></span>}
-          <button onClick={() => setIsSidebarExpanded(!isSidebarExpanded)} className="p-2 rounded-md hover:bg-sky-800 focus:outline-none focus:ring-2 focus:ring-sky-500">
-            {isSidebarExpanded ? <X size={24} /> : <Menu size={24} />}
+        <div className="flex items-center ${isSidebarExpanded ? 'justify-between' : 'justify-center'} mb-6">
+          {isSidebarExpanded && (
+            <Link to="/dashboard" className="flex items-center space-x-2">
+              <div className="bg-white p-1 rounded">
+                <BarChart3 size={20} className="text-sky-700" />
+              </div>
+              <span className="font-bold text-lg">BE_AUTOMATED</span>
+            </Link>
+          )}
+          <button 
+            onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
+            className="p-1 hover:bg-sky-800 rounded-md transition-colors duration-150"
+            aria-label={isSidebarExpanded ? "Sidebar schließen" : "Sidebar öffnen"}
+          >
+            {isSidebarExpanded ? <X size={20} /> : <Menu size={20} />}
           </button>
         </div>
+
         <nav className="flex-grow">
           <CommonNavItemsComponent currentPath={location.pathname} isSidebarExpanded={isSidebarExpanded} />
         </nav>
-        <div>
-          <NavItem to="/settings" icon={Settings} label="Einstellungen" currentPath={location.pathname} isSidebarExpanded={isSidebarExpanded} />
-        </div>
+
+        {/* Mini Kalender hier einfügen, nur wenn Sidebar expanded ist */} 
+        {isSidebarExpanded && (
+          <div className="my-4">
+            <MiniCalendar />
+          </div>
+        )}
+
+        {isSidebarExpanded && (
+          <div className="bg-sky-800 p-3 rounded-lg mt-auto">
+            <div className="flex items-center mb-1">
+              <Zap size={16} className="mr-2 text-yellow-400" />
+              <h4 className="text-sm font-semibold">Quick Tip</h4>
+            </div>
+            <p className="text-xs text-slate-300">
+              Verknüpfe Kalendertermine direkt mit Kontakten und Deals für eine bessere Übersicht.
+            </p>
+          </div>
+        )}
       </aside>
 
       {/* Mobile Menu Button */}

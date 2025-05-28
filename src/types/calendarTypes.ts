@@ -59,7 +59,10 @@ export interface FirestoreEvent {
   contactId?: string | null;
   dealId?: string | null;
   isRecurring?: boolean;
-  recurringPattern?: any; // TODO: Struktur für Wiederholungsmuster definieren (z.B. rrule String oder Objekt)
+  rruleString?: string | null; // Speichert die Wiederholungsregel als RRULE String
+  recurrenceEndDate?: Timestamp | null; // Optionales Enddatum der Serie
+  excludedDates?: Timestamp[]; // Daten einzelner Vorkommen, die gelöscht/geändert wurden
+  reminderOffsetMinutes?: number | null; // Minuten vor dem Start, null oder nicht vorhanden = keine Erinnerung
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
@@ -68,17 +71,24 @@ export interface FirestoreEvent {
 export interface EventFormData {
   title: string;
   type: EventTypeName;
-  startDate: Date;
-  startTime: string; // z.B. "10:30"
-  endDate: Date;
-  endTime: string; // z.B. "11:00"
+  startDate: Date;       // Startdatum des ERSTEN Vorkommens bei Serien
+  startTime: string;     // z.B. "10:30"
+  endDate: Date;         // Enddatum des ERSTEN Vorkommens (relevant für Dauer)
+  endTime: string;       // z.B. "11:00"
   allDay: boolean;
   location?: string;
-  attendees?: string; // Komma-separierte Liste für einfache Eingabe
+  attendees?: string;     // Komma-separierte Liste für einfache Eingabe
   notes?: string;
   contactId?: string | null;
   dealId?: string | null;
-  // Für Wiederholungen (vereinfacht für den Anfang)
-  // isRecurring?: boolean;
-  // recurrenceRule?: string; // z.B. rrule string
+  reminderOffsetMinutes: string; // 'none', '0', '15', etc. Wird beim Speichern konvertiert
+  
+  // Felder für Serientermine
+  isRecurring: boolean;
+  recurrenceFrequency?: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly'; // 'none' für nicht wiederholend
+  recurrenceInterval?: number;      // z.B. alle X Tage/Wochen/Monate/Jahre
+  recurrenceByDay?: string[];       // z.B. ['MO', 'TU', 'WE'] für wöchentlich; für monatlich ggf. spezifischer Tag
+  recurrenceEndType?: 'never' | 'onDate' | 'afterOccurrences';
+  recurrenceEndDateForm?: Date | null; // Enddatum der Serie (wenn recurrenceEndType === 'onDate')
+  recurrenceOccurrences?: number;   // Anzahl der Vorkommen (wenn recurrenceEndType === 'afterOccurrences')
 } 

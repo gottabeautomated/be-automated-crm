@@ -2,7 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, Link, useLocation } from 'react-router-dom';
 import { Home, Users, Briefcase, CheckSquare, Settings, LogIn, UserPlus, FileText, Calendar, BarChart2 } from 'lucide-react';
 import MainLayout from '@/components/layout/MainLayout';
-import DashboardPage from '@/components/dashboard/DashboardPage';
+import DashboardPage from '@/pages/DashboardPage';
 import ContactsPage from '@/components/contacts/ContactsPage';
 import AssessmentsPage from '@/components/assessments/AssessmentsPage';
 import LoginPage from '@/components/auth/LoginPage';
@@ -12,6 +12,9 @@ import ActivitiesPage from '@/pages/ActivitiesPage';
 import AssessmentToolsPage from './pages/AssessmentToolsPage';
 import AssessmentResultsPage from './pages/AssessmentResultsPage';
 import CalendarPage from './pages/CalendarPage';
+import SettingsPage from './pages/SettingsPage';
+import TasksPage from './pages/TasksPage';
+import ReportsPage from './pages/ReportsPage';
 
 const ProtectedRoute: React.FC = () => {
   const { user, loading } = useAuth();
@@ -44,6 +47,9 @@ const App: React.FC = () => {
               <Route path="assessment-hub" element={<AssessmentToolsPage />} />
               <Route path="assessment-results" element={<AssessmentResultsPage />} />
               <Route path="calendar" element={<CalendarPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+              <Route path="tasks" element={<TasksPage />} />
+              <Route path="reports" element={<ReportsPage />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Route>
           </Route>

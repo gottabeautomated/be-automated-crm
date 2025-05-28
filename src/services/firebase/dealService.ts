@@ -14,7 +14,8 @@ import {
   FirestoreError
 } from 'firebase/firestore';
 import { db } from './firebase.config'; // Korrekter Import von db
-import { Deal, DealFormData, PipelineStage } from '@/types/dealTypes';
+import { Deal, DealFormData } from '@/types/dealTypes';
+import { toast } from 'sonner';
 
 // --- Helper Functions ---
 const getDealsCollectionRef = (userId: string) => {
@@ -64,34 +65,41 @@ export const subscribeToDealsService = (
 /**
  * Adds a new deal to Firestore for a specific user.
  */
-export const addDealService = async (userId: string, dealData: DealFormData): Promise<string> => {
+export const addDealService = async (userId: string, dealData: DealFormData, pipelineStages?: any[]): Promise<string> => {
   const dealsCollectionRef = getDealsCollectionRef(userId);
   try {
-    const dealObjectForFirestore: Partial<Omit<Deal, 'id' | 'createdAt' | 'updatedAt'>> & Pick<Deal, 'title' | 'company' | 'value' | 'probability' | 'stage' | 'userId'> = {
+    // Hole den Stage-Namen anhand der stageId (für das Dashboard)
+    let stageName = '';
+    if (dealData.stageId) {
+      stageName = dealData.stageId;
+      if (pipelineStages && Array.isArray(pipelineStages)) {
+        const found = pipelineStages.find((s: any) => s.id === dealData.stageId);
+        if (found) stageName = found.name;
+      }
+    }
+    const dealObjectForFirestore: any = {
       title: dealData.title,
       company: dealData.companyName,
       value: parseFloat(dealData.value) || 0,
       probability: parseInt(dealData.probability, 10) || 0,
-      stage: dealData.stage,
+      stageId: dealData.stageId,
+      stage: stageName, // NEU: für Dashboard-Auswertungen
+      status: 'active', // NEU: immer beim Anlegen
       userId: userId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     };
-
     if (dealData.contactId) dealObjectForFirestore.contactId = dealData.contactId;
     if (dealData.assignedTo) dealObjectForFirestore.assignedUserId = dealData.assignedTo;
     if (dealData.notes) dealObjectForFirestore.notes = dealData.notes;
     if (dealData.description) dealObjectForFirestore.description = dealData.description;
     if (dealData.tags && dealData.tags.length > 0) dealObjectForFirestore.tags = dealData.tags;
     if (dealData.expectedCloseDate) dealObjectForFirestore.expectedCloseDate = Timestamp.fromDate(new Date(dealData.expectedCloseDate));
-    
-    const docRef = await addDoc(dealsCollectionRef, {
-      ...dealObjectForFirestore,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+    const docRef = await addDoc(dealsCollectionRef, dealObjectForFirestore);
     return docRef.id;
   } catch (error) {
     console.error("Error adding deal: ", error);
-    throw error; // Rethrow to be caught by the caller
+    throw error;
   }
 };
 
@@ -101,13 +109,34 @@ export const addDealService = async (userId: string, dealData: DealFormData): Pr
 export const updateDealStageService = async (
   userId: string,
   dealId: string,
-  newStage: PipelineStage
+  newStageId: string,
+  pipelineStages?: any[]
 ): Promise<void> => {
   const dealRef = getDealDocRef(userId, dealId);
   try {
+    let statusUpdate: any = {};
+    let stageName = newStageId;
+    if (pipelineStages && Array.isArray(pipelineStages)) {
+      const found = pipelineStages.find((s: any) => s.id === newStageId);
+      if (found) stageName = found.name;
+    }
+    // Prüfe, ob die neue Stage "Gewonnen" ist (Name oder ID)
+    if (stageName && (stageName.toLowerCase() === 'gewonnen' || newStageId === 'won')) {
+      statusUpdate = {
+        status: 'won',
+        closedAt: serverTimestamp(),
+      };
+    } else {
+      statusUpdate = {
+        status: 'active',
+        closedAt: null,
+      };
+    }
     await updateDoc(dealRef, {
-      stage: newStage,
+      stageId: newStageId,
+      stage: stageName,
       updatedAt: serverTimestamp(),
+      ...statusUpdate,
     });
   } catch (error) {
     console.error('Error updating deal stage: ', error);
@@ -131,7 +160,7 @@ export const updateDealDetailsService = async (
   if (dealData.companyName !== undefined) updatePayload.company = dealData.companyName;
   if (dealData.value !== undefined) updatePayload.value = parseFloat(dealData.value) || 0;
   if (dealData.probability !== undefined) updatePayload.probability = parseInt(dealData.probability, 10) || 0;
-  if (dealData.stage !== undefined) updatePayload.stage = dealData.stage;
+  if (dealData.stageId !== undefined) updatePayload.stageId = dealData.stageId;
   
   // For optional fields, set to null if explicitly empty, otherwise use the value
   // This allows clearing fields in Firestore by setting them to null
@@ -229,6 +258,51 @@ export const getDealListForUser = async (userId: string): Promise<DealQuickSelec
     console.error("Error fetching deal list for user: ", error);
     // Im Fehlerfall eine leere Liste zurückgeben, damit die UI nicht bricht
     return []; 
+  }
+};
+
+export interface FirestoreDeal {
+  id: string;
+  name: string;
+  value: number;
+  stage: string;
+  probability: number;
+  expectedCloseDate: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Ruft alle Deals eines Benutzers für den CSV-Export ab.
+ * @param userId UID des Benutzers.
+ * @returns Ein Promise, das ein Array von FirestoreDeal-Objekten auflöst.
+ */
+export const getAllDealsForExport = async (userId: string): Promise<FirestoreDeal[]> => {
+  if (!userId) {
+    console.error("UserID is required to get all deals for export.");
+    return [];
+  }
+  try {
+    const dealsCollectionRef = collection(db, 'users', userId, 'deals');
+    const q = query(dealsCollectionRef, orderBy('createdAt', 'desc'));
+    const querySnapshot = await getDocs(q);
+
+    const deals: FirestoreDeal[] = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data() as Omit<FirestoreDeal, 'id'>;
+      deals.push({
+        id: doc.id,
+        ...data,
+        createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
+        updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : new Date().toISOString(),
+        expectedCloseDate: data.expectedCloseDate ? (typeof data.expectedCloseDate === 'string' ? data.expectedCloseDate : (data.expectedCloseDate as Timestamp).toDate().toISOString().split('T')[0]) : '',
+      } as unknown as FirestoreDeal);
+    });
+    return deals;
+  } catch (error: any) {
+    console.error("Error fetching all deals for export: ", error);
+    toast.error("Fehler beim Abrufen der Deals für den Export.");
+    return [];
   }
 };
 

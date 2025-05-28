@@ -61,4 +61,10 @@
   - [ ] Untersuchen, warum in der Monatsansicht keine Termine angezeigt werden, obwohl Daten vorhanden sind und andere Ansichten (Tag, Woche) funktionieren.
   - [ ] Mögliche Ursachen prüfen: CSS-Konflikte (globale Stile, Tailwind-Interferenzen, spezifische Monatsansicht-Stile von react-big-calendar), Interferenz durch das `withDragAndDrop` HOC, fehlerhafte Event-Props oder interne Darstellungslogik der Bibliothek für die Monatsansicht.
   - [ ] DOM-Inspektion und CSS-Debugging in den Entwicklertools des Browsers durchführen, um unsichtbare oder falsch positionierte Event-Elemente zu identifizieren.
-  - [ ] Ggf. testweise `react-big-calendar.css` nach Tailwind CSS importieren oder eine minimale Testimplementierung erstellen. 
+  - [ ] Ggf. testweise `react-big-calendar.css` nach Tailwind CSS importieren oder eine minimale Testimplementierung erstellen.
+
+- [ ] **Einstellungen - Profil: Zwei-Faktor-Authentifizierung (2FA) implementieren:**
+  - [ ] Geeignete Firebase-Mechanismen für 2FA evaluieren (z.B. Phone Number Auth, TOTP).
+  - [ ] UI für Setup und Verwaltung von 2FA im Profil-Tab erstellen.
+  - [ ] Backend-Logik (ggf. Firebase Functions) für 2FA-Prozesse (Verifizierung, Code-Generierung etc.).
+  - [ ] Anpassung des Login-Prozesses, um 2FA zu berücksichtigen. 

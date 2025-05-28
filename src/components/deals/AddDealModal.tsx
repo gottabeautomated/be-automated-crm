@@ -1,30 +1,45 @@
 import React, { useState, FormEvent, useEffect } from 'react';
 import { X, Briefcase, DollarSign, CalendarDays, Percent, Tag, AlignLeft, Users, User, ChevronDown } from 'lucide-react';
-import { DealFormData, Deal } from '@/types/dealTypes';
+import { DealFormData } from '@/types/dealTypes'; // Deal-Typ nicht mehr direkt hier benötigt, nur FormData
 import { addDealService } from '@/services/firebase/dealService';
-import { FirestoreContact } from '@/types/contactTypes'; // Import Contact types
-import { subscribeToContacts } from '@/services/firebase/contactService'; // Import contact service
+import { FirestoreContact } from '@/types/contactTypes';
+import { subscribeToContacts } from '@/services/firebase/contactService';
+import { PipelineStage as GlobalPipelineStage } from '@/types/pipelineTypes'; // Import für globale Stages
 
 interface AddDealModalProps {
   isOpen: boolean;
   onClose: () => void;
   userId: string;
-  onDealAdded?: (newDealId: string) => void; // Optional callback
+  pipelineStages: GlobalPipelineStage[]; // Globale Pipeline Phasen hinzugefügt
+  onDealAdded?: (newDealId: string) => void;
 }
 
-const DEAL_STAGES_OPTIONS: Deal['stage'][] = ['Lead', 'Qualifiziert', 'Angebot', 'Verhandlung', 'Abgeschlossen', 'Verloren'];
+const AddDealModal: React.FC<AddDealModalProps> = ({ isOpen, onClose, userId, pipelineStages, onDealAdded }) => {
+  
+  const getDefaultStageId = (): string => {
+    if (pipelineStages && pipelineStages.length > 0) {
+      // Versuche, eine "Standard"-Anfangsphase zu finden (z.B. die mit order 0 oder die erste in der Liste)
+      const firstStage = pipelineStages.sort((a,b) => a.order - b.order)[0];
+      return firstStage.id;
+    }
+    return ''; // Fallback, falls keine Stages vorhanden sind (sollte nicht passieren, wenn Modal korrekt aufgerufen wird)
+  };
 
-const AddDealModal: React.FC<AddDealModalProps> = ({ isOpen, onClose, userId, onDealAdded }) => {
+  const getDefaultProbability = (stageId: string): string => {
+    const stage = pipelineStages.find(s => s.id === stageId);
+    return stage && stage.probability !== undefined ? stage.probability.toString() : '0';
+  };
+
   const initialFormData: DealFormData = {
     title: '',
     value: '0',
-    stage: 'Lead',
+    stageId: getDefaultStageId(), // stageId statt stage, Standardwert aus globalen Stages
     companyName: '',
-    probability: '0',
+    probability: getDefaultProbability(getDefaultStageId()), // Standardwahrscheinlichkeit basierend auf default stage
     expectedCloseDate: '',
     description: '',
-    contactId: '', // Optional, can be linked later or selected
-    assignedTo: '', // Optional
+    contactId: '',
+    assignedTo: '',
     tags: [],
     notes: '',
   };
@@ -33,6 +48,22 @@ const AddDealModal: React.FC<AddDealModalProps> = ({ isOpen, onClose, userId, on
   const [error, setError] = useState<string | null>(null);
   const [contacts, setContacts] = useState<FirestoreContact[]>([]);
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
+
+  // Effekt, um Formular zurückzusetzen und Standardwerte neu zu setzen, wenn Modal geöffnet wird oder pipelineStages sich ändern
+  useEffect(() => {
+    if (isOpen) {
+        const defaultStageId = getDefaultStageId();
+        setFormData({
+            ...initialFormData, // Beginne mit den Basis-Initialwerten
+            stageId: defaultStageId,
+            probability: getDefaultProbability(defaultStageId),
+        });
+    } else {
+        // Optional: Formular beim Schließen zurücksetzen, falls gewünscht, oder nur bei erneutem Öffnen
+        // setFormData(initialFormData); 
+    }
+}, [isOpen, pipelineStages]); // Abhängigkeit von pipelineStages hinzugefügt
+
 
   useEffect(() => {
     if (isOpen && userId) {
@@ -51,16 +82,27 @@ const AddDealModal: React.FC<AddDealModalProps> = ({ isOpen, onClose, userId, on
       );
       return () => unsubscribe();
     } else {
-      setContacts([]); // Clear contacts when modal is closed or no userId
+      setContacts([]);
     }
   }, [isOpen, userId]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value,
-    }));
+    if (name === "stageId") {
+        // Wenn sich die Phase ändert, aktualisiere die Wahrscheinlichkeit automatisch
+        const stage = pipelineStages.find(s => s.id === value);
+        const newProbability = stage && stage.probability !== undefined ? stage.probability.toString() : formData.probability;
+        setFormData(prev => ({
+            ...prev,
+            [name]: value,
+            probability: newProbability,
+        }));
+    } else {
+        setFormData(prev => ({
+            ...prev,
+            [name]: value,
+        }));
+    }
   };
 
   const handleTagChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -77,6 +119,10 @@ const AddDealModal: React.FC<AddDealModalProps> = ({ isOpen, onClose, userId, on
       setError("Titel und Firmenname sind Pflichtfelder.");
       return;
     }
+    if (!formData.stageId) {
+        setError("Bitte wählen Sie eine Pipeline-Phase aus.");
+        return;
+    }
     const probabilityNumber = parseFloat(formData.probability);
     if (isNaN(probabilityNumber) || probabilityNumber < 0 || probabilityNumber > 100) {
       setError("Wahrscheinlichkeit muss eine Zahl zwischen 0 und 100 sein.");
@@ -85,9 +131,15 @@ const AddDealModal: React.FC<AddDealModalProps> = ({ isOpen, onClose, userId, on
     setIsSubmitting(true);
     setError(null);
     try {
-      const newDealId = await addDealService(userId, formData);
+      const newDealId = await addDealService(userId, formData, pipelineStages); // pipelineStages als 2. Parameter
       setIsSubmitting(false);
-      setFormData(initialFormData); // Reset form
+      // Reset form to initial state considering current pipelineStages for defaults
+      const defaultStageId = getDefaultStageId();
+      setFormData({ 
+          ...initialFormData, 
+          stageId: defaultStageId, 
+          probability: getDefaultProbability(defaultStageId)
+      }); 
       onClose();
       if (onDealAdded) {
         onDealAdded(newDealId);
@@ -142,10 +194,13 @@ const AddDealModal: React.FC<AddDealModalProps> = ({ isOpen, onClose, userId, on
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label htmlFor="stage" className="block text-sm font-medium text-gray-700 mb-1">Phase</label>
-              <select name="stage" id="stage" value={formData.stage} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500 bg-white">
-                {DEAL_STAGES_OPTIONS.map(stage => (
-                  <option key={stage} value={stage}>{stage}</option>
+              <label htmlFor="stageId" className="block text-sm font-medium text-gray-700 mb-1">Phase</label>
+              <select name="stageId" id="stageId" value={formData.stageId} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500 bg-white">
+                {pipelineStages.length === 0 && <option value="" disabled>Lade Phasen...</option>}
+                {pipelineStages.map(stage => (
+                  <option key={stage.id} value={stage.id} style={{color: stage.color || 'inherit'}}>
+                    {stage.name}
+                  </option>
                 ))}
               </select>
             </div>
@@ -170,7 +225,6 @@ const AddDealModal: React.FC<AddDealModalProps> = ({ isOpen, onClose, userId, on
             </div>
           </div>
 
-          {/* Contact Selector */}
           <div>
             <label htmlFor="contactId" className="block text-sm font-medium text-gray-700 mb-1">Verknüpfter Kontakt</label>
             <div className="relative">
@@ -199,48 +253,31 @@ const AddDealModal: React.FC<AddDealModalProps> = ({ isOpen, onClose, userId, on
                 <div className="pointer-events-none absolute inset-y-0 left-0 top-0 pl-3 pt-2.5 flex items-start">
                   <AlignLeft className="h-5 w-5 text-gray-400" />
                 </div>
-              <textarea name="description" id="description" value={formData.description} onChange={handleChange} rows={3} className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500"></textarea>
+                <textarea name="description" id="description" value={formData.description} onChange={handleChange} rows={3} className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500"></textarea>
             </div>
           </div>
 
-          {/* Optional Fields Section */}
-          <details className="bg-slate-50 p-3 rounded-md">
-            <summary className="text-sm font-medium text-gray-600 hover:text-sky-700 cursor-pointer">Optionale Felder</summary>
-            <div className="mt-4 space-y-4">
-              <div>
-                <label htmlFor="assignedTo" className="block text-sm font-medium text-gray-700 mb-1">Zugewiesen an (Benutzer ID)</label>
-                 <div className="relative rounded-md shadow-sm">
-                    <div className="pointer-events-none absolute inset-y-0 left-0 pl-3 flex items-center">
-                      <Users className="h-5 w-5 text-gray-400" />
-                    </div>
-                  <input type="text" name="assignedTo" id="assignedTo" value={formData.assignedTo} onChange={handleChange} placeholder="Benutzer ID (optional)" className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-sky-500 focus:border-sky-500" />
-                </div>
-              </div>
+           <div>
+            <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-1">Notizen</label>
+             <textarea name="notes" id="notes" value={formData.notes} onChange={handleChange} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500" placeholder="Interne Notizen zum Deal..."></textarea>
+          </div>
 
-              <div>
-                <label htmlFor="tags" className="block text-sm font-medium text-gray-700 mb-1">Tags (kommagetrennt)</label>
-                 <div className="relative rounded-md shadow-sm">
-                    <div className="pointer-events-none absolute inset-y-0 left-0 pl-3 flex items-center">
-                      <Tag className="h-5 w-5 text-gray-400" />
-                    </div>
-                  <input type="text" name="tags" id="tags" value={(formData.tags || []).join(', ')} onChange={handleTagChange} placeholder="z.B. wichtig, neukunde" className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-sky-500 focus:border-sky-500" />
+          <div>
+            <label htmlFor="tags" className="block text-sm font-medium text-gray-700 mb-1">Tags (kommagetrennt)</label>
+            <div className="relative rounded-md shadow-sm">
+                 <div className="pointer-events-none absolute inset-y-0 left-0 pl-3 flex items-center">
+                  <Tag className="h-5 w-5 text-gray-400" />
                 </div>
-              </div>
-
-              <div>
-                <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-1">Notizen</label>
-                <textarea name="notes" id="notes" value={formData.notes} onChange={handleChange} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500" placeholder="Interne Notizen zum Deal..."></textarea>
-              </div>
+              <input type="text" name="tags" id="tags" value={formData.tags?.join(', ') || ''} onChange={handleTagChange} className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500" />
             </div>
-          </details>
-          
+          </div>
 
-          <div className="flex justify-end space-x-3 pt-4">
-            <button type="button" onClick={onClose} disabled={isSubmitting} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 disabled:opacity-50">
+          <div className="flex justify-end space-x-3 pt-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md border border-gray-300">
               Abbrechen
             </button>
-            <button type="submit" disabled={isSubmitting || isLoadingContacts} className="px-4 py-2 text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 disabled:opacity-50 disabled:bg-sky-400">
-              {isSubmitting ? 'Speichern...' : 'Deal erstellen'}
+            <button type="submit" disabled={isSubmitting || pipelineStages.length === 0} className="px-4 py-2 text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 rounded-md shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+              {isSubmitting ? 'Wird erstellt...' : 'Deal erstellen'}
             </button>
           </div>
         </form>

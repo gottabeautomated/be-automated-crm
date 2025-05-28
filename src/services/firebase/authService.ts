@@ -5,7 +5,10 @@ import {
   updateProfile,
   signOut,
   onAuthStateChanged,
-  User as FirebaseUser // Alias um Kollision mit unserem User-Typ zu vermeiden
+  User as FirebaseUser, // Alias um Kollision mit unserem User-Typ zu vermeiden
+  EmailAuthProvider, // Hinzufügen für Re-Authentifizierung
+  reauthenticateWithCredential, // Hinzufügen für Re-Authentifizierung
+  updatePassword // Hinzufügen für Passwortaktualisierung
 } from 'firebase/auth';
 import { auth } from './firebase.config'; // Annahme: auth-Instanz wird hier exportiert
 
@@ -80,14 +83,52 @@ export const onAuthStatusChanged = (callback: (user: FirebaseUser | null) => voi
  * Aktualisiert das Profil des aktuell angemeldeten Benutzers.
  * @param data Ein Objekt mit den zu aktualisierenden Profildaten (z.B. { displayName: 'Neuer Name' })
  */
-export const updateUserProfile = async (data: { displayName?: string; photoURL?: string }) => {
+export const updateUserProfile = async (data: { displayName?: string; photoURL?: string; phoneNumber?: string }) => {
   if (!auth.currentUser) {
     throw new Error("Kein Benutzer angemeldet, um das Profil zu aktualisieren.");
   }
   try {
     await updateProfile(auth.currentUser, data);
+    // Wichtig: Firebase Auth aktualisiert phoneNumber nicht direkt über updateProfile.
+    // Dies erfordert einen komplexeren Flow mit Verifizierung, der hier nicht abgebildet wird.
+    // Wenn `data.phoneNumber` vorhanden ist, müsste hier die separate Logik implementiert werden.
+    // Für dieses Beispiel konzentrieren wir uns auf displayName und photoURL via updateProfile.
+    // Das `phoneNumber` im `updates`-Objekt in `ProfileSettingsTab` ist daher aktuell ohne direkte Firebase Auth Funktion hier.
   } catch (error: any) {
     console.error("Error updating profile: ", error);
     throw new Error(error.message || "Fehler beim Aktualisieren des Profils.");
+  }
+};
+
+/**
+ * Re-authentifiziert den aktuellen Benutzer mit seinem Passwort.
+ */
+export const reauthenticateCurrentUser = async (currentPassword_1: string): Promise<void> => {
+  if (!auth.currentUser) {
+    throw new Error("Kein Benutzer angemeldet für Re-Authentifizierung.");
+  }
+  const credential = EmailAuthProvider.credential(auth.currentUser.email!, currentPassword_1);
+  try {
+    await reauthenticateWithCredential(auth.currentUser, credential);
+  } catch (error: any) {
+    console.error("Error during re-authentication: ", error);
+    // Spezifische Fehlerbehandlung kann hier erfolgen (z.B. error.code === 'auth/wrong-password')
+    throw error; // Fehler weiterwerfen, damit die aufrufende Funktion ihn behandeln kann
+  }
+};
+
+/**
+ * Ändert das Passwort des aktuell angemeldeten Benutzers.
+ * Wichtig: Der Benutzer sollte kürzlich re-authentifiziert worden sein.
+ */
+export const changeCurrentUserPassword = async (newPassword_1: string): Promise<void> => {
+  if (!auth.currentUser) {
+    throw new Error("Kein Benutzer angemeldet, um das Passwort zu ändern.");
+  }
+  try {
+    await updatePassword(auth.currentUser, newPassword_1);
+  } catch (error: any) {
+    console.error("Error changing password: ", error);
+    throw error; // Fehler weiterwerfen
   }
 }; 

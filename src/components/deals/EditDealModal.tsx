@@ -5,63 +5,67 @@ import { updateDealDetailsService } from '@/services/firebase/dealService';
 import { FirestoreContact } from '@/types/contactTypes';
 import { subscribeToContacts } from '@/services/firebase/contactService';
 import { Timestamp } from 'firebase/firestore';
+import { PipelineStage as GlobalPipelineStage } from '@/types/pipelineTypes';
 
 interface EditDealModalProps {
   isOpen: boolean;
   onClose: () => void;
   userId: string;
-  dealToEdit: Deal;
+  deal: Deal;
+  pipelineStages: GlobalPipelineStage[];
   onDealUpdated?: () => void;
 }
 
-const DEAL_STAGES_OPTIONS: Deal['stage'][] = ['Lead', 'Qualifiziert', 'Angebot', 'Verhandlung', 'Abgeschlossen', 'Verloren'];
-
-const EditDealModal: React.FC<EditDealModalProps> = ({ isOpen, onClose, userId, dealToEdit, onDealUpdated }) => {
-  const initialFormData: DealFormData = {
+const EditDealModal: React.FC<EditDealModalProps> = ({ isOpen, onClose, userId, deal, pipelineStages, onDealUpdated }) => {
+  const initialFormStateForEdit: DealFormData = {
     title: '',
     value: '0',
-    stage: 'Lead',
+    stageId: '',
     companyName: '',
     probability: '0',
     expectedCloseDate: '',
     description: '',
-    contactId: '', 
-    assignedTo: '', 
+    contactId: '',
+    assignedTo: '',
     tags: [],
     notes: '',
   };
-  const [formData, setFormData] = useState<DealFormData>(initialFormData);
+  const [formData, setFormData] = useState<DealFormData>(initialFormStateForEdit);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [contacts, setContacts] = useState<FirestoreContact[]>([]);
   const [isLoadingContacts, setIsLoadingContacts] = useState(false);
 
   useEffect(() => {
-    if (dealToEdit) {
+    if (deal) {
       const formatDate = (timestamp: Timestamp | undefined): string => {
         if (!timestamp) return '';
-        const date = timestamp.toDate();
-        // Ensure month and day are two digits
-        const month = (`0${date.getMonth() + 1}`).slice(-2);
-        const day = (`0${date.getDate()}`).slice(-2);
-        return `${date.getFullYear()}-${month}-${day}`;
+        try {
+            const date = timestamp.toDate();
+            const month = (`0${date.getMonth() + 1}`).slice(-2);
+            const day = (`0${date.getDate()}`).slice(-2);
+            return `${date.getFullYear()}-${month}-${day}`;
+        } catch (e) {
+            console.warn("Fehler beim Formatieren des Timestamps für expectedCloseDate:", timestamp, e);
+            return '';
+        }
       };
 
       setFormData({
-        title: dealToEdit.title || '',
-        value: dealToEdit.value?.toString() || '0',
-        stage: dealToEdit.stage || 'Lead',
-        companyName: dealToEdit.company || '',
-        probability: dealToEdit.probability?.toString() || '0',
-        expectedCloseDate: formatDate(dealToEdit.expectedCloseDate),
-        description: (dealToEdit as any).description || '',
-        contactId: dealToEdit.contactId || '',
-        assignedTo: dealToEdit.assignedUserId || '',
-        tags: (dealToEdit as any).tags || [],
-        notes: dealToEdit.notes || '',
+        title: deal.title || '',
+        value: deal.value?.toString() || '0',
+        stageId: deal.stageId || (pipelineStages.length > 0 ? pipelineStages[0].id : ''),
+        companyName: deal.company || '',
+        probability: deal.probability?.toString() || '0',
+        expectedCloseDate: formatDate(deal.expectedCloseDate),
+        description: deal.description || '',
+        contactId: deal.contactId || '',
+        assignedTo: deal.assignedUserId || '',
+        tags: deal.tags || [],
+        notes: deal.notes || '',
       });
     }
-  }, [dealToEdit]);
+  }, [deal, pipelineStages]);
 
   useEffect(() => {
     if (isOpen && userId) {
@@ -86,10 +90,20 @@ const EditDealModal: React.FC<EditDealModalProps> = ({ isOpen, onClose, userId, 
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value,
-    }));
+    if (name === "stageId") {
+        const stage = pipelineStages.find(s => s.id === value);
+        const newProbability = stage && stage.probability !== undefined ? stage.probability.toString() : formData.probability;
+        setFormData(prev => ({
+            ...prev,
+            [name]: value,
+            probability: newProbability,
+        }));
+    } else {
+        setFormData(prev => ({
+            ...prev,
+            [name]: value,
+        }));
+    }
   };
 
   const handleTagChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -106,6 +120,10 @@ const EditDealModal: React.FC<EditDealModalProps> = ({ isOpen, onClose, userId, 
       setError("Titel und Firmenname sind Pflichtfelder.");
       return;
     }
+    if (!formData.stageId) {
+        setError("Bitte wählen Sie eine Pipeline-Phase aus.");
+        return;
+    }
     const probabilityNumber = parseFloat(formData.probability);
     if (isNaN(probabilityNumber) || probabilityNumber < 0 || probabilityNumber > 100) {
       setError("Wahrscheinlichkeit muss eine Zahl zwischen 0 und 100 sein.");
@@ -114,7 +132,7 @@ const EditDealModal: React.FC<EditDealModalProps> = ({ isOpen, onClose, userId, 
     setIsSubmitting(true);
     setError(null);
     try {
-      await updateDealDetailsService(userId, dealToEdit.id, formData);
+      await updateDealDetailsService(userId, deal.id, formData);
       setIsSubmitting(false);
       onClose();
       if (onDealUpdated) {
@@ -170,10 +188,13 @@ const EditDealModal: React.FC<EditDealModalProps> = ({ isOpen, onClose, userId, 
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label htmlFor="stage" className="block text-sm font-medium text-gray-700 mb-1">Phase</label>
-              <select name="stage" id="stage" value={formData.stage} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500 bg-white">
-                {DEAL_STAGES_OPTIONS.map(stage => (
-                  <option key={stage} value={stage}>{stage}</option>
+              <label htmlFor="stageId" className="block text-sm font-medium text-gray-700 mb-1">Phase</label>
+              <select name="stageId" id="stageId" value={formData.stageId} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500 bg-white">
+                {pipelineStages.length === 0 && <option value="" disabled>Lade Phasen...</option>}
+                {pipelineStages.map(stage => (
+                  <option key={stage.id} value={stage.id} style={{color: stage.color || 'inherit'}}>
+                    {stage.name}
+                  </option>
                 ))}
               </select>
             </div>
@@ -198,7 +219,7 @@ const EditDealModal: React.FC<EditDealModalProps> = ({ isOpen, onClose, userId, 
             </div>
           </div>
 
-           <div>
+          <div>
             <label htmlFor="contactId" className="block text-sm font-medium text-gray-700 mb-1">Verknüpfter Kontakt</label>
             <div className="relative">
               <select 
@@ -226,46 +247,31 @@ const EditDealModal: React.FC<EditDealModalProps> = ({ isOpen, onClose, userId, 
                 <div className="pointer-events-none absolute inset-y-0 left-0 top-0 pl-3 pt-2.5 flex items-start">
                   <AlignLeft className="h-5 w-5 text-gray-400" />
                 </div>
-              <textarea name="description" id="description" value={formData.description} onChange={handleChange} rows={3} className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500"></textarea>
+                <textarea name="description" id="description" value={formData.description} onChange={handleChange} rows={3} className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500"></textarea>
             </div>
           </div>
 
-          <details className="bg-slate-50 p-3 rounded-md" open={!!(formData.assignedTo || (formData.tags && formData.tags.length > 0) || formData.notes)}>
-            <summary className="text-sm font-medium text-gray-600 hover:text-sky-700 cursor-pointer">Weitere optionale Felder</summary>
-            <div className="mt-4 space-y-4">
-              <div>
-                <label htmlFor="assignedTo" className="block text-sm font-medium text-gray-700 mb-1">Zugewiesen an (Benutzer ID)</label>
-                 <div className="relative rounded-md shadow-sm">
-                    <div className="pointer-events-none absolute inset-y-0 left-0 pl-3 flex items-center">
-                      <Users className="h-5 w-5 text-gray-400" />
-                    </div>
-                  <input type="text" name="assignedTo" id="assignedTo" value={formData.assignedTo} onChange={handleChange} placeholder="Benutzer ID (optional)" className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-sky-500 focus:border-sky-500" />
-                </div>
-              </div>
+          <div>
+            <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-1">Notizen</label>
+            <textarea name="notes" id="notes" value={formData.notes} onChange={handleChange} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500" placeholder="Interne Notizen zum Deal..."></textarea>
+          </div>
 
-              <div>
-                <label htmlFor="tags" className="block text-sm font-medium text-gray-700 mb-1">Tags (kommagetrennt)</label>
-                 <div className="relative rounded-md shadow-sm">
-                    <div className="pointer-events-none absolute inset-y-0 left-0 pl-3 flex items-center">
-                      <Tag className="h-5 w-5 text-gray-400" />
-                    </div>
-                  <input type="text" name="tags" id="tags" value={(formData.tags || []).join(', ')} onChange={handleTagChange} placeholder="z.B. wichtig, neukunde" className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md focus:ring-sky-500 focus:border-sky-500" />
+          <div>
+            <label htmlFor="tags" className="block text-sm font-medium text-gray-700 mb-1">Tags (kommagetrennt)</label>
+            <div className="relative rounded-md shadow-sm">
+                 <div className="pointer-events-none absolute inset-y-0 left-0 pl-3 flex items-center">
+                  <Tag className="h-5 w-5 text-gray-400" />
                 </div>
-              </div>
-
-              <div>
-                <label htmlFor="notes" className="block text-sm font-medium text-gray-700 mb-1">Notizen</label>
-                <textarea name="notes" id="notes" value={formData.notes} onChange={handleChange} rows={3} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500" placeholder="Interne Notizen zum Deal..."></textarea>
-              </div>
+              <input type="text" name="tags" id="tags" value={formData.tags?.join(', ') || ''} onChange={handleTagChange} className="w-full pl-10 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500" />
             </div>
-          </details>
-          
-          <div className="flex justify-end space-x-3 pt-4">
-            <button type="button" onClick={onClose} disabled={isSubmitting} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 disabled:opacity-50">
+          </div>
+
+          <div className="flex justify-end space-x-3 pt-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md border border-gray-300">
               Abbrechen
             </button>
-            <button type="submit" disabled={isSubmitting || isLoadingContacts} className="px-4 py-2 text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 disabled:opacity-50 disabled:bg-sky-400">
-              {isSubmitting ? 'Speichern...' : 'Änderungen speichern'}
+            <button type="submit" disabled={isSubmitting || pipelineStages.length === 0} className="px-4 py-2 text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 rounded-md shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
+              {isSubmitting ? 'Wird gespeichert...' : 'Änderungen speichern'}
             </button>
           </div>
         </form>
